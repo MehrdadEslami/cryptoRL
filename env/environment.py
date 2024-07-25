@@ -41,7 +41,7 @@ class TradingEnv(gym.Env):
 
     def reset(self):
         self.current_step = 0
-        self.balance = 10000
+        self.balance = 1000
         self.position = 0
         self.observer.reset()
         return self.observer.observe(self)

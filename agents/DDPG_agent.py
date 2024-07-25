@@ -1,3 +1,5 @@
+import json
+
 import tensorflow as tf
 import numpy as np
 from keras.applications import VGG16
@@ -6,6 +8,10 @@ from keras.optimizers import Adam
 from nltk import Model
 from tensorflow.python.keras.layers import Dense
 from env.environment import TradingEnv
+
+with open("../config.json", "r") as file:
+    config = json.load(file)
+
 
 class DDPGAgent:
     def __init__(self, config):
@@ -45,8 +51,8 @@ class DDPGAgent:
         state = self.env.reset()
         done = False
         while not done:
-            # action_probs, _ = self.predict(state)
-            # action = np.argmax(action_probs) if np.random.rand() > self.epsilon else self.env.action_space.sample()
+            action_probs, _ = self.predict(state)
+            action = np.argmax(action_probs) if np.random.rand() > self.epsilon else self.env.action_space.sample()
             action = -0.25
             next_state, reward, done, _ = self.env.step(action)
             self.memory.append((state, action, reward, next_state, done))
