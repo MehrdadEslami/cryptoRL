@@ -1,0 +1,29 @@
+{
+  "kafka": {
+    "brokers": ["kafka1:9092"],
+    "topics": {
+      "trades_topic": "trades",
+      "images_topic": "trade_images"
+    }
+  },
+  "influxdb": {
+    "url": "http://localhost:8086",
+    "org": "Phd",
+    "bucket": "tradeBucket",
+    "token": "t-5-drh57KQtwHdrbMQ8QBmpAOfatgcai1PdAMxjPOnZvSD-3ZsQxz0VZMpIkTKrEyc5At8VaWtjGo_I2kb7iQ=="
+  },
+  "symbols": [
+    "BTCUSDT",
+    "ETHBTC",
+    "ETHUSDT"
+  ],
+  "symbol":"BTCUSDT",
+  "buffer_size": "10",
+  "api": {
+    "endpoints": {
+      "BTCUSDT": "https://api.hitbtc.com/api/3/public/trades/BTCUSDT?sort=DESC",
+      "ETHBTC": "https://api.hitbtc.com/api/3/public/trades/ETHBTC?sort=DESC",
+      "ETHUSDT": "https://api.hitbtc.com/api/3/public/trades/ETHUSDT?sort=DESC"
+    }
+  }
+}

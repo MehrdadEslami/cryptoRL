@@ -1,0 +1,52 @@
+version: '3.9'
+
+services:
+  zookeeper:
+    image: bitnami/zookeeper
+    container_name: zoo1
+    hostname: zoo1
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: 'yes'
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka_broker1:
+    image: bitnami/kafka
+    container_name: kafka1
+    hostname: kafka1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"  # Internal Docker network port
+      - "29092:29092"  # External port for host access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zoo1:2181'
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: user
+      DOCKER_INFLUXDB_INIT_PASSWORD: 12341234
+      DOCKER_INFLUXDB_INIT_ORG: Phd
+      DOCKER_INFLUXDB_INIT_BUCKET: tradeBucket
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: t-5-drh57KQtwHdrbMQ8QBmpAOfatgcai1PdAMxjPOnZvSD-3ZsQxz0VZMpIkTKrEyc5At8VaWtjGo_I2kb7iQ==
+      INFLUXDB_ADMIN_USER: admin
+      INFLUXDB_ADMIN_PASSWORD: 12341234
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - /var/lib/influxdb2:/var/lib/influxdb2
+
+volumes:
+  influxdb-data:
