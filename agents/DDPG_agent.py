@@ -51,6 +51,7 @@ class DDPGAgent:
         return action_probs[0], value[0]
 
     def train(self):
+        print('STAET TRAIN LOOP:', self.env.step_count)
         state, state_price = self.env.reset()
         done = False
         while not done:
@@ -64,7 +65,6 @@ class DDPGAgent:
               self.btc_balance ] = self.env.step(action, self.usdt_balance, self.btc_balance)
             self.memory.append((state, action, reward, next_state, done))
             state = next_state
-            print('STEP IN TRAIN LOOP:',self.env.step_count)
             print('-----------------------------------------')
             # self.replay()
 

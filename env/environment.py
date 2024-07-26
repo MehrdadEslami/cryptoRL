@@ -35,10 +35,11 @@ class TradingEnv(gym.Env):
         print('NOW IN ENVIRONMENT STEP: ', self.step_count)
         [usdt_balance, btc_balance] = self.action_scheme.perform(self, action, usdt_balance, btc_balance, self.current_state_mean_price)
         self.step_count += 1
-        reward = self.reward_scheme.reward(self)
+        # reward = self.reward_scheme.reward(self)
         state = self.observer.observe()
         self.current_state = state
         done = False
+        reward = 2
         return [state, reward, done, usdt_balance, btc_balance]
 
     def reset(self):
