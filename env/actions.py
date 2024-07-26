@@ -36,13 +36,38 @@ class BSH(ActionScheme):
     def action_space(self) -> Space:
         return Discrete(7, start=-1)  # Actions:  -1, -0.5, -0.25, 0, 0.25, 0.5,  1
 
-    def perform(self, env: 'TradingEnv', action: Any) -> None:
+    def perform(self, env: 'TradingEnv', action: float, usdt_balance, btc_balance, current_price) -> None:
         """Performs the action on the given environment."""
-        orders = self.get_orders(action, env.observer.portfolio)
+        # orders = self.get_orders(action, env.observer.portfolio)
+        #
+        # for order in orders:
+        #     if order:
+        #         order.execute()
+        print('Here In Action Perform')
+        print('Action: %f, usdt_balance: %f, btc_balance: %f, current_price:%f'%(action, usdt_balance, btc_balance, current_price))
+        if action < 0:
+            # Sell action
+            btc_to_sell = abs(action) * btc_balance
+            revenue = btc_to_sell * current_price
+            btc_balance -= btc_to_sell
+            usdt_balance += revenue
+            print(f"Sold {btc_to_sell:.6f} BTC for {revenue:.2f} USDT")
+        elif action > 0:
+            # Buy action
+            usdt_to_spend = action * usdt_balance
+            if usdt_balance < usdt_to_spend:
+                print('not enought To buy usdt_balance is', usdt_balance)
+                print('not enought To buy uusdt_to_spend is', usdt_to_spend)
+            btc_to_buy = usdt_to_spend / current_price
+            usdt_balance -= usdt_to_spend
+            btc_balance += btc_to_buy
+            print(f"Bought {btc_to_buy:.6f} BTC for {usdt_to_spend:.2f} USDT")
+            print("now usdt_balance is ", usdt_balance)
+            print("now btc_balance is ", btc_balance)
+        else:
+            print("No action taken")
 
-        for order in orders:
-            if order:
-                order.execute()
+        return [usdt_balance, btc_balance]
 
     def get_orders(self, action: int, portfolio: 'Portfolio') -> 'Order':
         orders = []

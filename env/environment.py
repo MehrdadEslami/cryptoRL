@@ -1,4 +1,6 @@
 import json
+from typing import List, Any
+
 import gym
 from gym import spaces
 import numpy as np
@@ -12,6 +14,7 @@ from env.observers import ObserverM
 class TradingEnv(gym.Env):
     def __init__(self, trading_pair, config):
         super(TradingEnv, self).__init__()
+
         self.symbol = config['symbol']
         self.trading_pair = trading_pair
         self.start_query_time = 0
@@ -24,27 +27,26 @@ class TradingEnv(gym.Env):
         self.action_space = self.action_scheme.action_space
         self.observation_space = self.observer.observation_space
 
-        self.current_step = 0
+        self.step_count = 0
+        self.current_state = None
+        self.current_state_mean_price = 0
 
-    def step(self, action):
-        print('IN ENV STEP')
-        state = 1
-        reward = 1
-        done = True
-        # self.action_scheme.perform(self, action)
-        # self.current_step += 1
-        # done = True
-        # reward = self.reward_scheme.reward(self)
-        # state = self.observer.observe(self)
-
-        return state, reward, done, {}
+    def step(self, action, usdt_balance, btc_balance):
+        print('NOW IN ENVIRONMENT STEP: ', self.step_count)
+        [usdt_balance, btc_balance] = self.action_scheme.perform(self, action, usdt_balance, btc_balance, self.current_state_mean_price)
+        self.step_count += 1
+        reward = self.reward_scheme.reward(self)
+        state = self.observer.observe()
+        self.current_state = state
+        done = False
+        return [state, reward, done, usdt_balance, btc_balance]
 
     def reset(self):
-        self.current_step = 0
-        self.balance = 1000
-        self.position = 0
+        print('NOW ENVIRONMENT IS RESESING >>>> ')
+        self.step_count = 0
         self.observer.reset()
-        return self.observer.observe(self)
+        self.current_state, self.current_state_mean_price = self.observer.observe()
+        return self.current_state, self.current_state_mean_price
 
     def render(self, mode='human'):
         pass

@@ -26,10 +26,13 @@ class DDPGAgent:
         self.epsilon_min = 0.01
         self.learning_rate = 0.001
         self.batch_size = 64
-        self.model = self.build_model()
+        # self.model = self.build_model()
         self.optimizer = Adam(lr=self.learning_rate)
         self.id = 3620398178
         self.env.agent_id = self.id
+
+        self.usdt_balance = 1000
+        self.btc_balance = 0
 
     def build_model(self):
         vgg16 = VGG16(include_top=False, input_shape=(self.buffer_size, self.buffer_size, 3))
@@ -48,17 +51,21 @@ class DDPGAgent:
         return action_probs[0], value[0]
 
     def train(self):
-        state = self.env.reset()
+        state, state_price = self.env.reset()
         done = False
         while not done:
-            action_probs, _ = self.predict(state)
-            action = np.argmax(action_probs) if np.random.rand() > self.epsilon else self.env.action_space.sample()
-            action = -0.25
-            next_state, reward, done, _ = self.env.step(action)
+            # action_probs, _ = self.predict(state)
+            # action = np.argmax(action_probs) if np.random.rand() > self.epsilon else self.env.action_space.sample()
+            action = 0.25
+            [ next_state, \
+              reward, \
+              done, \
+              self.usdt_balance,
+              self.btc_balance ] = self.env.step(action, self.usdt_balance, self.btc_balance)
             self.memory.append((state, action, reward, next_state, done))
             state = next_state
-            print('ONE STEP IN TRAIN LOOP')
-            print(reward)
+            print('STEP IN TRAIN LOOP:',self.env.step_count)
+            print('-----------------------------------------')
             # self.replay()
 
     def update_model_parameters(self, states, actions, advantages, returns):

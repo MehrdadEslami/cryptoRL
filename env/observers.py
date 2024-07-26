@@ -19,7 +19,6 @@ min_timestamp = convert_timestamp_to_float("2024-01-01T00:00:00.000000+00:00")
 max_timestamp = convert_timestamp_to_float("2024-12-31T23:59:59.999999+00:00")
 
 
-
 class Observer(metaclass=ABCMeta):
     """A component to generate an observation at each step of an episode."""
 
@@ -49,17 +48,19 @@ class ObserverM(Observer):
 
     def __init__(self, influx_config, symbol, buffer_size: int = 25, **kwargs) -> None:
         super().__init__()
+
         self.influxdb_config = influx_config
-        self.symbol = symbol
-        self.buffer_size = buffer_size
         self.client = InfluxDBClient(**self.influxdb_config)
+        self.buffer_size = buffer_size
+        self.slice_size = self.buffer_size ** 2
         self.query_api = self.client.query_api()
         self.trades = pd.DataFrame()
+        self.state_mean_price = 0
         self.last_trade_time = 0
         self.next_image_i = 0
-        self.slice_size = self.buffer_size ** 2
+        self.symbol = symbol
+        self.state = None
         self.step = 0
-
 
         self._observation_space = Box(
             low=0,
@@ -82,27 +83,27 @@ class ObserverM(Observer):
         return self._observation_space
 
     def observe(self) -> np.array:
-        self.state = self.next()
-        return self.state
+        self.state, self.state_mean_price = self.next()
+        return self.state, self.state_mean_price
 
     def next(self):
         while len(self.trades) < self.buffer_size ** 2:
             self.query_trades(self.last_trade_time, "now()")
             if len(self.trades) < self.buffer_size ** 2:
                 time.wait(600)
-        self.step = self.step + 1
         end = self.next_image_i + self.slice_size
         slice_trades = self.trades.iloc[self.next_image_i:end]
+        self.step = self.step + 1
         image = self.trades_to_normal_image(slice_trades.reset_index(drop=True))
         self.next_image_i = end
-        return image
+        return image, self.mean_price
 
     def reset(self) -> None:
+        print('ITS RESETING OBSERVER ..... ')
         self.trades = pd.DataFrame()
         self.last_trade_time = 0
         self.next_image_i = 0
         self.step = 0
-        return self.next()
 
     def query_trades(self, start, end):
         query = f'''
@@ -113,7 +114,7 @@ class ObserverM(Observer):
               |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
               |> keep(columns: ["_time", "price", "quantity", "side"])
             '''
-        print(query)
+        # print(query)
         tables = self.query_api.query(query)
         self.client.close()
 
@@ -133,17 +134,17 @@ class ObserverM(Observer):
         self.var_qty = self.trades['quantity'].var()
         self.mean_price = self.trades['price'].mean()
         self.var_price = self.trades['price'].var()
+
         if not self.trades.empty:
             self.last_trade_time = self.trades.iloc[-1]['time'].isoformat()
             print('last trade time ', self.last_trade_time)
-
+        print('THE INFLUX QUERY DONE and last trade time is:', self.last_trade_time)
     def trades_to_normal_image(self, trades):
         # Initialize image channels
         buy_channel = np.zeros((self.buffer_size, self.buffer_size))
         sell_channel = np.zeros((self.buffer_size, self.buffer_size))
         price_channel = np.zeros((self.buffer_size, self.buffer_size))
         time_channel = np.zeros((self.buffer_size, self.buffer_size))
-        self.step = self.step + 1
         for j, trade in trades.iterrows():
             side = trade['side']
             price = trade['price']
@@ -165,25 +166,13 @@ class ObserverM(Observer):
             else:
                 sell_channel[row, col] = quantity_norm
 
-            print('[%d,%d]'%(row,col))
-            print('side:', side)
-            print("time = %f, norm time=%f"%(trade_time, time_norm))
-            print("quantity = %f, quantity time=%f"%(quantity, quantity_norm))
-            print("price = %f, norm price=%f"%(price, price_norm))
+            # print('[%d,%d]' % (row, col))
+            # print('side:', side)
+            # print("time = %f, norm time=%f" % (trade_time, time_norm))
+            # print("quantity = %f, quantity time=%f" % (quantity, quantity_norm))
+            # print("price = %f, norm price=%f" % (price, price_norm))
 
         image = np.stack((buy_channel, sell_channel, price_channel, time_channel), axis=2)
+        print('CONVERT trade to image step:', self.step)
         return image
 
-    # def fetch_and_process_trades(self):
-    #     while True:
-    #         self.query_trades(self.start_query_time, "now()")
-    #         num_trades = len(self.trades)
-    #         for i in range(0, num_trades, self.buffer_size ** 2):
-    #             end = i + self.buffer_size ** 2
-    #             trades_slice = self.trades.iloc[i:end]
-    #             if len(trades_slice) < self.buffer_size ** 2:
-    #                 break
-    #             print('trades slice :', len(trades_slice))
-    #             image = self.trades_to_normal_image(trades_slice.reset_index(drop=True))
-    #             self.image_queue.put(image)
-    #         time.sleep(10)  # Adjust sleep time as needed to control fetch rate
