@@ -139,6 +139,7 @@ class ObserverM(Observer):
             self.last_trade_time = self.trades.iloc[-1]['time'].isoformat()
             print('last trade time ', self.last_trade_time)
         print('THE INFLUX QUERY DONE and last trade time is:', self.last_trade_time)
+
     def trades_to_normal_image(self, trades):
         # Initialize image channels
         buy_channel = np.zeros((self.buffer_size, self.buffer_size))
@@ -175,4 +176,3 @@ class ObserverM(Observer):
         image = np.stack((buy_channel, sell_channel, price_channel, time_channel), axis=2)
         print('CONVERT trade to image step:', self.step)
         return image
-
