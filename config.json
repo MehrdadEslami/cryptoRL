@@ -18,8 +18,8 @@
     "ETHUSDT"
   ],
   "symbol":"BTCUSDT",
-  "buffer_size": "32",
-  "max_steps": "10",
+  "buffer_size": "128",
+  "max_steps": "1",
   "model_weights_path": "model_weights",
   "api": {
     "endpoints": {

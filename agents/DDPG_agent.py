@@ -36,7 +36,7 @@ class DDPGAgent:
         self.critic_model = self._build_critic_network()
 
         # Load weights if they exist
-        self.load_weights()
+        # self.load_weights()
 
     def VGG_16(self, weights_path=None):
         model = Sequential()
@@ -123,8 +123,8 @@ class DDPGAgent:
         return model
 
     def save_weights(self):
-        self.actor_model.save_weights(os.path.join(self.model_path, 'actor_model.h5'))
-        self.critic_model.save_weights(os.path.join(self.model_path, 'critic_model.h5'))
+        self.actor_model.save_weights(os.path.join(self.model_path, 'actor_model_128.h5'))
+        self.critic_model.save_weights(os.path.join(self.model_path, 'critic_model_128.h5'))
 
     def load_weights(self):
         if os.path.exists(os.path.join(self.model_path, 'actor_model.h5')):
@@ -182,22 +182,24 @@ class DDPGAgent:
             state, _ = self.env.reset()
             episode_reward = 0
             episode_profit = 0
-            state_reward = []
-            state_action = []
-            action_time = []
+            self.state_reward = []
+            self.state_action = []
+            self.action_time = []
             done = False
 
             while not done:
                 action = self.predict(state) if np.random.rand() > self.epsilon else self.env.action_space.sample()
                 next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance = self.env.step(action[0], self.usdt_balance,
                                                                                               self.btc_balance)
+                if len(next_state) == 1:
+                    break
                 print('reward after one step in Environment is ', reward)
                 self.memory.append((state, action, reward, next_state, done))
                 state = next_state
                 self.update_net()
-                state_action.append(action)
-                state_reward.append(reward)
-                action_time = next_state[0, 0, 3]
+                self.state_action.append(action)
+                self.state_reward.append(reward)
+                self.action_time.append( next_state[0, 0, 3] )
                 episode_reward += reward
                 episode_profit = self.usdt_balance - (self.btc_balance * next_state_price + self.usdt_balance)
                 print('------------------------------------------------------------------')
@@ -221,5 +223,5 @@ class DDPGAgent:
         with open('training_state_logs.csv', 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['action', 'Reward', 'action_time'])
-            for i in range(state_action.shape):
-                writer.writerow( state_action[i], state_reward[i], action_time[i] )
+            for i in range(len(self.state_action)):
+                writer.writerow([self.state_action[i], self.state_reward[i], self.action_time[i]])

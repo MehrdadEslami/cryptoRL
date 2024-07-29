@@ -38,6 +38,8 @@ class TradingEnv(gym.Env):
         self.step_count += 1
         current_price = self.current_state_mean_price
         next_state, self.current_state_mean_price = self.observer.observe()
+        if len(next_state) == 1:
+            return [-1, -1, -1, True, usdt_balance, btc_balance]
         new_state_price = self.current_state_mean_price
         reward = self.reward_scheme.reward(action, current_price, new_state_price)
         self.current_state = next_state
@@ -56,6 +58,8 @@ class TradingEnv(gym.Env):
 
     def calculate_max_q(self, next_state):
         next_next_state, next_next_mean_price = self.observer.observe()
+        if len(next_next_state) == 1:
+            return -1;
         buy = np.array(next_state[:, :, 0])
         sell = np.array(next_state[:, :, 1])
         price = np.array(next_state[:, :, 2])

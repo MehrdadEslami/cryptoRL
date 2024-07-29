@@ -53,5 +53,5 @@ if __name__ == "__main__":
 
     # Usage
     agent = DDPGAgent(config)
-    agent.train(num_episodes=10)
+    agent.train(num_episodes=10000)
     plot_training_logs('training_logs.csv')
