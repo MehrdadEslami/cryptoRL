@@ -90,7 +90,7 @@ class ObserverM(Observer):
         while len(self.trades) < self.buffer_size ** 2:
             self.query_trades(self.last_trade_time, "now()")
             if len(self.trades) < self.buffer_size ** 2:
-                time.wait(600)
+                time.sleep(600)
         end = self.next_image_i + self.slice_size
         slice_trades = self.trades.iloc[self.next_image_i:end]
         self.step = self.step + 1

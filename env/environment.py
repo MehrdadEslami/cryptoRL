@@ -16,6 +16,7 @@ class TradingEnv(gym.Env):
         super(TradingEnv, self).__init__()
 
         self.symbol = config['symbol']
+        self.max_steps = int(config['max_steps'])
         self.trading_pair = trading_pair
         self.start_query_time = 0
         self.end_query_time = "now()"
@@ -33,15 +34,35 @@ class TradingEnv(gym.Env):
 
     def step(self, action, usdt_balance, btc_balance):
         print('NOW IN ENVIRONMENT STEP: ', self.step_count)
-        [usdt_balance, btc_balance] = self.action_scheme.perform(self, action, usdt_balance, btc_balance, self.current_state_mean_price)
+        usdt_balance, btc_balance = self.action_scheme.perform(action, usdt_balance, btc_balance, self.current_state_mean_price)
         self.step_count += 1
         current_price = self.current_state_mean_price
-        next_state = self.observer.observe()
+        next_state, self.current_state_mean_price = self.observer.observe()
         new_state_price = self.current_state_mean_price
         reward = self.reward_scheme.reward(action, current_price, new_state_price)
         self.current_state = next_state
+        # Define when the episode is done
         done = False
-        return [next_state, reward, done, usdt_balance, btc_balance]
+        if usdt_balance < 0 or btc_balance < 0 or self.step_count >= self.max_steps:
+            done = True
+            print("Episode finished:")
+            if usdt_balance <= 0:
+                print("USDT balance fell to 0 or below.")
+            if btc_balance <= 0:
+                print("BTC balance fell to 0 or below.")
+            if self.step_count >= self.max_steps:
+                print("Reached maximum number of steps.")
+        return [next_state, self.current_state_mean_price,  reward, done, usdt_balance, btc_balance]
+
+    def calculate_max_q(self, next_state):
+        next_next_state, next_next_mean_price = self.observer.observe()
+        buy = np.array(next_state[:, :, 0])
+        sell = np.array(next_state[:, :, 1])
+        price = np.array(next_state[:, :, 2])
+        time = np.array(next_state[:, :, 3])
+        print('price shape:', price.shape)
+        profit = (buy * next_next_mean_price + sell * next_next_mean_price) - (buy * price + sell * price)
+        return np.max(profit)
 
     def reset(self):
         print('NOW ENVIRONMENT IS RESESING >>>> ')
