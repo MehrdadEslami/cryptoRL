@@ -44,7 +44,9 @@ def plot_training_logs(filename):
     plt.legend()
     plt.grid(True)
 
-    plt.show()
+    # plt.show()
+    plt.savefig('training_logs.png')
+    print('done')
 
 
 if __name__ == "__main__":
@@ -52,6 +54,5 @@ if __name__ == "__main__":
     print('After Creating Agent in Main')
 
     # Usage
-    agent = DDPGAgent(config)
-    agent.train(num_episodes=10000)
+    agent.train(num_episodes=50)
     plot_training_logs('training_logs.csv')

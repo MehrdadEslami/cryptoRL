@@ -21,7 +21,7 @@ class TradingEnv(gym.Env):
         self.start_query_time = 0
         self.end_query_time = "now()"
 
-        self.action_scheme = BSH(self.trading_pair)
+        self.action_scheme = BSH()
         self.observer = ObserverM(config['influxdb'], self.symbol, buffer_size=int(config['buffer_size']))
         self.reward_scheme = SimpleProfit()
 
@@ -32,19 +32,21 @@ class TradingEnv(gym.Env):
         self.current_state = None
         self.current_state_mean_price = 0
 
-    def step(self, action, usdt_balance, btc_balance):
+    def step(self, action_index, usdt_balance, btc_balance):
         print('NOW IN ENVIRONMENT STEP: ', self.step_count)
+        action = self.action_scheme.actions[action_index]
         usdt_balance, btc_balance = self.action_scheme.perform(action, usdt_balance, btc_balance, self.current_state_mean_price)
-        self.step_count += 1
         current_price = self.current_state_mean_price
         next_state, self.current_state_mean_price = self.observer.observe()
-        if len(next_state) == 1:
-            return [-1, -1, -1, True, usdt_balance, btc_balance]
+
         new_state_price = self.current_state_mean_price
         reward = self.reward_scheme.reward(action, current_price, new_state_price)
         self.current_state = next_state
+        self.step_count += 1
         # Define when the episode is done
         done = False
+        if self.current_state_mean_price == -1:
+            return [[-1], -1, -1, True, usdt_balance, btc_balance]
         if usdt_balance < 0 or btc_balance < 0 or self.step_count >= self.max_steps:
             done = True
             print("Episode finished:")

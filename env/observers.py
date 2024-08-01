@@ -52,7 +52,7 @@ class ObserverM(Observer):
         self.influxdb_config = influx_config
         self.client = InfluxDBClient(**self.influxdb_config)
         self.buffer_size = buffer_size
-        self.slice_size = self.buffer_size ** 2
+        self.slice_size = self.buffer_size + 100
         self.query_api = self.client.query_api()
         self.trades = pd.DataFrame()
         self.state_mean_price = 0
@@ -69,14 +69,15 @@ class ObserverM(Observer):
             dtype=np.uint8
         )
 
-        self.max_prices = 0
-        self.min_prices = 0
-        self.max_qty = 0
-        self.min_qty = 0
-        self.mean_qty = 0
-        self.var_qty = 0
-        self.mean_price = 0
-        self.var_price = 0
+        self.max_all_prices = 0
+        self.min_all_prices = 0
+        self.max_all_qty = 0
+        self.min_all_qty = 0
+        self.mean_all_qty = 0
+        self.var_all_qty = 0
+        self.mean_all_price = 0
+        self.var_all_price = 0
+        self.image_mean_price = 0
 
     @property
     def observation_space(self) -> Space:
@@ -87,18 +88,28 @@ class ObserverM(Observer):
         return self.state, self.state_mean_price
 
     def next(self):
-        while len(self.trades) < self.buffer_size ** 2:
+        # while len(self.trades) < self.buffer_size ** 2:
+        #     self.query_trades(self.last_trade_time, "now()")
+        #     if len(self.trades) < self.buffer_size ** 2:
+        #         if len(self.trades) == 0:
+        #             return -1, -1
+        #         # time.sleep(600)
+        if len(self.trades) < self.buffer_size ** 2:
             self.query_trades(self.last_trade_time, "now()")
-            if len(self.trades) < self.buffer_size ** 2:
-                if len(self.trades) == 0:
-                    return -1,-1
-                time.sleep(600)
         end = self.next_image_i + self.slice_size
-        slice_trades = self.trades.iloc[self.next_image_i:end]
+        if self.next_image_i >= len(self.trades):
+            print('THE observer.image_i > len(self.trades')
+            return -1,-1
+        if self.next_image_i < len(self.trades) and end > len(self.trades):
+            slice_trades = self.trades.iloc[self.next_image_i:]
+        else:
+            slice_trades = self.trades.iloc[self.next_image_i:end]
         self.step = self.step + 1
+
+
         image = self.trades_to_normal_image(slice_trades.reset_index(drop=True))
         self.next_image_i = end
-        return image, self.mean_price
+        return image, self.state_mean_price
 
     def reset(self) -> None:
         print('ITS RESETING OBSERVER ..... ')
@@ -128,14 +139,14 @@ class ObserverM(Observer):
         self.trades = pd.DataFrame(records, columns=['time', 'price', 'quantity', 'side'])
 
         # Normalize price and quantity
-        self.max_prices = self.trades['price'].max()
-        self.min_prices = self.trades['price'].min()
-        self.max_qty = self.trades['quantity'].max()
-        self.min_qty = self.trades['quantity'].min()
-        self.mean_qty = self.trades['quantity'].mean()
-        self.var_qty = self.trades['quantity'].var()
-        self.mean_price = self.trades['price'].mean()
-        self.var_price = self.trades['price'].var()
+        self.max_all_prices = self.trades['price'].max()
+        self.min_all_prices = self.trades['price'].min()
+        self.max_all_qty = self.trades['quantity'].max()
+        self.min_all_qty = self.trades['quantity'].min()
+        self.mean_all_qty = self.trades['quantity'].mean()
+        self.var_all_qty = self.trades['quantity'].var()
+        self.mean_all_price = self.trades['price'].mean()
+        self.var_all_price = self.trades['price'].var()
 
         if not self.trades.empty:
             self.last_trade_time = self.trades.iloc[-1]['time'].isoformat()
@@ -148,6 +159,7 @@ class ObserverM(Observer):
         sell_channel = np.zeros((self.buffer_size, self.buffer_size))
         price_channel = np.zeros((self.buffer_size, self.buffer_size))
         time_channel = np.zeros((self.buffer_size, self.buffer_size))
+        self.state_mean_price = trades['price'].mean()
         for j, trade in trades.iterrows():
             side = trade['side']
             price = trade['price']
@@ -155,15 +167,15 @@ class ObserverM(Observer):
             trade_time = convert_timestamp_to_float(trade['time'])
 
             # NORMILIZING
-            price_norm = (price - self.min_prices) / (self.max_prices - self.min_prices)
-            quantity_norm = (quantity - self.mean_qty) / self.var_qty
+            price_norm = (price - self.min_all_prices) / (self.max_all_prices - self.min_all_prices)
+            quantity_norm = (quantity - self.mean_all_qty) / self.var_all_qty
             time_norm = (trade_time - min_timestamp) / (max_timestamp - min_timestamp)
 
             row = j // self.buffer_size
             col = j % self.buffer_size
 
             price_channel[row, col] = price_norm
-            time_channel[row, col] = time_norm
+            time_channel[row, col] = trade_time
             if side == 'buy':
                 buy_channel[row, col] = quantity_norm
             else:

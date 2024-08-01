@@ -17,6 +17,7 @@ class RewardScheme(metaclass=ABCMeta):
         """Resets the reward scheme."""
         pass
 
+
 class SimpleProfit(RewardScheme):
     """A simple reward scheme that rewards the agent for incremental increases in net worth."""
 
@@ -42,4 +43,6 @@ class SimpleProfit(RewardScheme):
         return np.clip(reward, -clip_value, clip_value)
 
     def simpleProfit(self, action, current_price, new_state_price):
-        return action * (new_state_price - current_price)
+        print('IN simpleProfit action: %f, current_price : %f, new_state_price: %f' % (
+            action, current_price, new_state_price))
+        return round(action * ((new_state_price - current_price) / new_state_price) * 100, 1)
