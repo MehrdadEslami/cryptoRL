@@ -34,22 +34,24 @@ def main():
             trades = fetch_trades(symbol='BTCUSDT')
             trades.insert(0, 'BTCUSDT')
             producer.send('trades', trades)
-            time.sleep(10)
+            time.sleep(20)
             print('this is after BTCUSDT')
 
             print('this is before ETHBTC')
             trades = fetch_trades(symbol='ETHBTC')
             trades.insert(0, 'ETHBTC')
             producer.send('trades', trades)
-            time.sleep(10)
+            time.sleep(20)
+            print('this is after ETHBTC')
 
+            print('this is before ETHUSDT')
             trades = fetch_trades(symbol='ETHUSDT')
             trades.insert(0, 'ETHUSDT')
             producer.send('trades', trades)
+            print('this is after ETHBTC')
             producer.flush()  # Ensure all messages are sent
-            logger.info("Sent trades data to Kafka")
-            time.sleep(30)
-            print('this is before ETHBTC')
+            logger.info("Flush(Sent) trades data to Kafka")
+            time.sleep(40)
 
         except requests.RequestException as e:
             logger.error(f"Error fetching trades: {e}")

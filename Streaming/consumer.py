@@ -93,11 +93,11 @@ def save_trade_data(trades, symbol, bucket=config["influxdb"]["bucket"]):
 
     # Save trades
     for trade in trades:
-        print(trade)
-        print(type(trade['id']))
-        print(type(trade['side']))
-        print(type(trade['qty']))
-        print(type(trade['timestamp']))
+        # print(trade)
+        # print(type(trade['id']))
+        # print(type(trade['side']))
+        # print(type(trade['qty']))
+        # print(type(trade['timestamp']))
         points.append(Point("trades") \
                       .tag("side", trade['side']) \
                       .tag("symbol", symbol) \
@@ -175,10 +175,10 @@ while True:
         for message in consumer:
             trades = message.value
             print('fetch trade from kafka broker')
-            print(trades)
+            # print(trades)
             symbol = trades[0]
             trades = trades[1:]
-            print(trades)
+            # print(trades)
             print(len(trades))
             print('trade_buffer %s:%d' % (symbol, len(trade_buffer[symbol])))
             if len(trade_buffer[symbol]) == 0 and lastTradeID[symbol] == 0:

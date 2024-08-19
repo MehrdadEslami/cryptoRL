@@ -22,7 +22,7 @@ class TradingEnv(gym.Env):
         self.end_query_time = "now()"
 
         self.action_scheme = BSH()
-        self.observer = ObserverM(config['influxdb'], self.symbol, buffer_size=int(config['buffer_size']))
+        self.observer = ObserverM(config)
         self.reward_scheme = SimpleProfit()
 
         self.action_space = self.action_scheme.action_space
@@ -40,7 +40,8 @@ class TradingEnv(gym.Env):
         next_state, self.current_state_mean_price = self.observer.observe()
 
         new_state_price = self.current_state_mean_price
-        reward = self.reward_scheme.reward(action, current_price, new_state_price)
+        # reward = self.reward_scheme.reward(action, current_price, new_state_price)
+        reward = self.reward_scheme.reward(usdt_balance, btc_balance, action, current_price, new_state_price)
         self.current_state = next_state
         self.step_count += 1
         # Define when the episode is done

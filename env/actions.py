@@ -44,11 +44,11 @@ class BSH(ActionScheme):
     def action_space(self) -> Space:
         return self._action_space
 
-    def perform(self, action: int, usdt_balance: float, btc_balance: float,
+    def perform(self, action: float, usdt_balance: float, btc_balance: float,
                 current_price: float) -> Any:
         """Performs the action on the given environment."""
         print('Here In Action Perform')
-        print('action: %d, usdt_balance: %f, btc_balance: %f, current_price:%f' % (
+        print('action: %f, usdt_balance: %f, btc_balance: %f, current_price:%f' % (
         action, usdt_balance, btc_balance, current_price))
         if action < 0:
             # Sell action

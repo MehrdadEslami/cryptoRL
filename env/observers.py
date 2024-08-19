@@ -46,19 +46,19 @@ class Observer(metaclass=ABCMeta):
 
 class ObserverM(Observer):
 
-    def __init__(self, influx_config, symbol, buffer_size: int = 25, **kwargs) -> None:
+    def __init__(self, config) -> None:
         super().__init__()
 
-        self.influxdb_config = influx_config
+        self.influxdb_config = config['influxdb']
         self.client = InfluxDBClient(**self.influxdb_config)
-        self.buffer_size = buffer_size
-        self.slice_size = self.buffer_size + 100
+        self.buffer_size = int(config['buffer_size'])
+        self.slice_size = int(config['slice_size'])
         self.query_api = self.client.query_api()
         self.trades = pd.DataFrame()
         self.state_mean_price = 0
         self.last_trade_time = 0
         self.next_image_i = 0
-        self.symbol = symbol
+        self.symbol = config['symbol']
         self.state = None
         self.step = 0
 
@@ -66,7 +66,7 @@ class ObserverM(Observer):
             low=0,
             high=1,
             shape=(self.buffer_size, self.buffer_size, 4),
-            dtype=np.uint8
+            dtype=np.cfloat
         )
 
         self.max_all_prices = 0
@@ -75,6 +75,8 @@ class ObserverM(Observer):
         self.min_all_qty = 0
         self.mean_all_qty = 0
         self.var_all_qty = 0
+        self.max_all_time = 0
+        self.min_all_time = 0
         self.mean_all_price = 0
         self.var_all_price = 0
         self.image_mean_price = 0
@@ -96,10 +98,10 @@ class ObserverM(Observer):
         #         # time.sleep(600)
         if len(self.trades) < self.buffer_size ** 2:
             self.query_trades(self.last_trade_time, "now()")
-        end = self.next_image_i + self.slice_size
+        end = self.next_image_i + self.buffer_size ** 2
         if self.next_image_i >= len(self.trades):
             print('THE observer.image_i > len(self.trades')
-            return -1,-1
+            return -1, -1
         if self.next_image_i < len(self.trades) and end > len(self.trades):
             slice_trades = self.trades.iloc[self.next_image_i:]
         else:
@@ -108,7 +110,7 @@ class ObserverM(Observer):
 
 
         image = self.trades_to_normal_image(slice_trades.reset_index(drop=True))
-        self.next_image_i = end
+        self.next_image_i = self.next_image_i + self.slice_size
         return image, self.state_mean_price
 
     def reset(self) -> None:
@@ -143,6 +145,8 @@ class ObserverM(Observer):
         self.min_all_prices = self.trades['price'].min()
         self.max_all_qty = self.trades['quantity'].max()
         self.min_all_qty = self.trades['quantity'].min()
+        self.max_all_time = self.trades['time'].max()
+        self.min_all_time = self.trades['time'].min()
         self.mean_all_qty = self.trades['quantity'].mean()
         self.var_all_qty = self.trades['quantity'].var()
         self.mean_all_price = self.trades['price'].mean()
@@ -164,22 +168,23 @@ class ObserverM(Observer):
             side = trade['side']
             price = trade['price']
             quantity = trade['quantity']
-            trade_time = convert_timestamp_to_float(trade['time'])
+            # trade_time = convert_timestamp_to_float(trade['time'])
 
             # NORMILIZING
             price_norm = (price - self.min_all_prices) / (self.max_all_prices - self.min_all_prices)
-            quantity_norm = (quantity - self.mean_all_qty) / self.var_all_qty
-            time_norm = (trade_time - min_timestamp) / (max_timestamp - min_timestamp)
+            # quantity_norm = (quantity - self.mean_all_qty) / self.var_all_qty
+            quantity_norm = (quantity - self.min_all_qty) / (self.max_all_qty - self.min_all_qty)
+            # time_norm = (trade_time - self.min_all_time) / (self.max_all_time - self.min_all_time)
 
             row = j // self.buffer_size
             col = j % self.buffer_size
 
-            price_channel[row, col] = price_norm
-            time_channel[row, col] = trade_time
+            price_channel[row, col] = round(price_norm, 5)
+            # time_channel[row, col] = round(trade_time, 5)
             if side == 'buy':
-                buy_channel[row, col] = quantity_norm
+                buy_channel[row, col] = round(quantity_norm, 5)
             else:
-                sell_channel[row, col] = quantity_norm
+                sell_channel[row, col] = round(quantity_norm, 5)
 
             # print('[%d,%d]' % (row, col))
             # print('side:', side)
@@ -187,6 +192,7 @@ class ObserverM(Observer):
             # print("quantity = %f, quantity time=%f" % (quantity, quantity_norm))
             # print("price = %f, norm price=%f" % (price, price_norm))
 
-        image = np.stack((buy_channel, sell_channel, price_channel, time_channel), axis=2)
+        # image = np.stack((buy_channel, sell_channel, price_channel, time_channel), axis=2)
+        image = np.stack((buy_channel, sell_channel, price_channel), axis=2)
         print('CONVERT trade to image step:', self.step)
         return image

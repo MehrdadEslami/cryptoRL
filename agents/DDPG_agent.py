@@ -17,12 +17,12 @@ class DDPGAgent:
         self.buffer_size = int(config['buffer_size'])
         self.model_path = config['model_weights_path']
         self.memory = []
-        self.gamma = 0.99
+        self.gamma = 0.8
         self.epsilon = 1.0
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.9
         self.epsilon_min = 0.01
-        self.learning_rate = 0.001
-        self.batch_size = 5
+        self.learning_rate = 0.01
+        self.batch_size = 6
         self.optimizer = Adam(lr=self.learning_rate)
         self.id = 3620398178
         self.env.agent_id = self.id
@@ -46,7 +46,7 @@ class DDPGAgent:
         vgg_input_shape = (self.buffer_size, self.buffer_size, 4)
 
         new_input = Input(shape=vgg_input_shape)
-        x = ZeroPadding2D((1, 1))(new_input)
+        # x = ZeroPadding2D((1, 1))(new_input)
         x = Convolution2D(64, (3, 3), activation='relu', name='block1_conv1_4ch')(x)
         for layer in vgg.layers[2:]:
             x = layer(x)
@@ -96,17 +96,17 @@ class DDPGAgent:
         self.target_critic_model.set_weights(new_weights)
 
     def save_weights(self):
-        self.actor_model.save_weights(os.path.join(self.model_path, 'actor_model_64.h5'))
-        self.critic_model.save_weights(os.path.join(self.model_path, 'critic_model_64.h5'))
+        self.actor_model.save_weights(os.path.join(self.model_path, 'actor_model_32_3.h5'))
+        self.critic_model.save_weights(os.path.join(self.model_path, 'critic_model_32_3.h5'))
 
     def load_weights(self):
-        if os.path.exists(os.path.join(self.model_path, 'actor_model_64.h5')):
-            self.actor_model.load_weights(os.path.join(self.model_path, 'actor_model_64.h5'))
-            self.target_actor_model.load_weights(os.path.join(self.model_path, 'actor_model_64.h5'))
+        if os.path.exists(os.path.join(self.model_path, 'actor_model_32_3.h5')):
+            self.actor_model.load_weights(os.path.join(self.model_path, 'actor_model_32_3.h5'))
+            self.target_actor_model.load_weights(os.path.join(self.model_path, 'actor_model_32_3.h5'))
             print("Loaded actor model weights.")
-        if os.path.exists(os.path.join(self.model_path, 'critic_model_64.h5')):
-            self.critic_model.load_weights(os.path.join(self.model_path, 'critic_model_64.h5'))
-            self.target_critic_model.load_weights(os.path.join(self.model_path, 'critic_model_64.h5'))
+        if os.path.exists(os.path.join(self.model_path, 'critic_model_32_3.h5')):
+            self.critic_model.load_weights(os.path.join(self.model_path, 'critic_model_32_3.h5'))
+            self.target_critic_model.load_weights(os.path.join(self.model_path, 'critic_model_32_3.h5'))
             print("Loaded critic model weights.")
 
     def update_net(self):
@@ -153,6 +153,7 @@ class DDPGAgent:
 
     def predict(self, state):
         # state = np.expand_dims(state, axis=0)
+        print('HELLO IN PREDICT *********WERWER*****************')
         state = np.array(state[0])
         state = np.expand_dims(state, axis=0)
         action_probs = self.actor_model.predict(state)
@@ -183,7 +184,6 @@ class DDPGAgent:
                     action_probs[self.env.action_space.sample()] = 1
 
                 # action[0] = round(action[0], 1)
-                print('action prob', action_probs)
                 next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance = self.env.step(
                     np.argmax(action_probs), self.usdt_balance,
                     self.btc_balance)

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from agents.DDPG_agent import DDPGAgent
-
+from agents.DQN_agent import DQNAgent
 
 with open("config.json", "r") as file:
     config = json.load(file)
@@ -45,14 +45,15 @@ def plot_training_logs(filename):
     plt.grid(True)
 
     # plt.show()
-    plt.savefig('training_logs.png')
+    plt.savefig('training_logs_dqn_64_1.png')
     print('done')
 
 
 if __name__ == "__main__":
-    agent = DDPGAgent(config)
+    # agent = DDPGAgent(config)
+    agent = DQNAgent(config)
     print('After Creating Agent in Main')
 
     # Usage
     agent.train(num_episodes=50)
-    plot_training_logs('training_logs.csv')
+    plot_training_logs('training_logs_dqn_64_1.csv')
