@@ -10,6 +10,7 @@
     "url": "http://localhost:8086",
     "org": "Phd",
     "bucket": "tradeBucket",
+    "bucket_ohlcv": "ohlcvBucket",
     "token": "t-5-drh57KQtwHdrbMQ8QBmpAOfatgcai1PdAMxjPOnZvSD-3ZsQxz0VZMpIkTKrEyc5At8VaWtjGo_I2kb7iQ=="
   },
   "symbols": [
@@ -17,10 +18,10 @@
     "ETHBTC",
     "ETHUSDT"
   ],
-  "symbol":"BTCUSDT",
-  "buffer_size": "64",
-  "slice_size": "1024",
-  "batch_size" : "32",
+  "symbol":"ETHUSDT",
+  "buffer_size": "32",
+  "slice_size": "512",
+  "batch_size" : "16",
   "max_steps": "10000",
   "model_weights_path": "model_weights",
   "api": {

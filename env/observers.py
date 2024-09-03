@@ -3,6 +3,7 @@ from gym.spaces import Box, Space
 from influxdb_client import InfluxDBClient
 import numpy as np
 import pandas as pd
+import datetime as dt
 import time
 
 
@@ -65,7 +66,7 @@ class ObserverM(Observer):
         self._observation_space = Box(
             low=0,
             high=1,
-            shape=(self.buffer_size, self.buffer_size, 4),
+            shape=(self.buffer_size, self.buffer_size, 3),
             dtype=np.cfloat
         )
 
@@ -90,28 +91,44 @@ class ObserverM(Observer):
         return self.state, self.state_mean_price
 
     def next(self):
-        # while len(self.trades) < self.buffer_size ** 2:
-        #     self.query_trades(self.last_trade_time, "now()")
-        #     if len(self.trades) < self.buffer_size ** 2:
-        #         if len(self.trades) == 0:
-        #             return -1, -1
-        #         # time.sleep(600)
         if len(self.trades) < self.buffer_size ** 2:
             self.query_trades(self.last_trade_time, "now()")
+
         end = self.next_image_i + self.buffer_size ** 2
         if self.next_image_i >= len(self.trades):
             print('THE observer.image_i > len(self.trades')
-            return -1, -1
+            return [-1], self.trades['price'].iloc[-1]
         if self.next_image_i < len(self.trades) and end > len(self.trades):
             slice_trades = self.trades.iloc[self.next_image_i:]
         else:
             slice_trades = self.trades.iloc[self.next_image_i:end]
         self.step = self.step + 1
 
-
         image = self.trades_to_normal_image(slice_trades.reset_index(drop=True))
+
+
+        # the price should be computed in trades[next_image_i+] time
+        if self.next_image_i + self.buffer_size ** 2 >= len(self.trades):
+            last_trade = self.trades.iloc[-1]
+        else:
+            last_trade = self.trades.iloc[self.next_image_i + self.buffer_size**2]
+
+        trade_time = last_trade['time']
+        if trade_time.minute < 15:
+            start = trade_time - dt.timedelta(minutes=30)
+        else:
+            start = trade_time
+        end = start + dt.timedelta(minutes=30)
+        # change format to Flux suitable format
+        start = start.strftime('%Y-%m-%dT%H:%M:%SZ')
+        end = end.strftime('%Y-%m-%dT%H:%M:%SZ')
+        ohlcv = self.query_ohlcv_by_time(start, end)
+
         self.next_image_i = self.next_image_i + self.slice_size
-        return image, self.state_mean_price
+        if ohlcv is list:
+            return image, self.image_mean_price
+        else:
+            return image, ohlcv['high']
 
     def reset(self) -> None:
         print('ITS RESETING OBSERVER ..... ')
@@ -126,6 +143,7 @@ class ObserverM(Observer):
               |> range(start: {start}, stop: {end})
               |> filter(fn: (r) => r["_measurement"] == "trades")
               |> filter(fn: (r) => r["symbol"] == "{self.symbol}")
+              |> filter(fn: (r) => r["side"] == "buy" or r["side"] == "sell")
               |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
               |> keep(columns: ["_time", "price", "quantity", "side"])
             '''
@@ -139,6 +157,8 @@ class ObserverM(Observer):
                 records.append((record["_time"], record["price"], record["quantity"], record["side"]))
 
         self.trades = pd.DataFrame(records, columns=['time', 'price', 'quantity', 'side'])
+        self.trades = self.trades.sort_values(by='time')
+        self.trades = self.trades[self.trades['quantity'] > 0.001]
 
         # Normalize price and quantity
         self.max_all_prices = self.trades['price'].max()
@@ -147,7 +167,7 @@ class ObserverM(Observer):
         self.min_all_qty = self.trades['quantity'].min()
         self.max_all_time = self.trades['time'].max()
         self.min_all_time = self.trades['time'].min()
-        self.mean_all_qty = self.trades['quantity'].mean()
+        self.mean_all_qty = 0.001  # self.trades['quantity'].mean()
         self.var_all_qty = self.trades['quantity'].var()
         self.mean_all_price = self.trades['price'].mean()
         self.var_all_price = self.trades['price'].var()
@@ -156,6 +176,33 @@ class ObserverM(Observer):
             self.last_trade_time = self.trades.iloc[-1]['time'].isoformat()
             print('last trade time ', self.last_trade_time)
         print('THE INFLUX QUERY DONE and last trade time is:', self.last_trade_time)
+
+    def query_ohlcv_by_time(self, start, end):
+        query = f'''
+                    from(bucket: "ohlcvBucket")
+                        |> range(start: {start}, stop: {end})
+                        |> filter(fn: (r) => r["_measurement"] == "ohlcvBucket")
+                        |> filter(fn: (r) => r["symbol"] == "{self.symbol}")
+                        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+                        |> keep(columns: ["_time", "open", "close", "high", "low", "volume"])
+                    '''
+        tables = self.query_api.query(query)
+        self.client.close()
+
+        records = []
+        for table in tables:
+            for record in table.records:
+                # print('record', record)
+                records.append(
+                    (record["_time"], record["open"], record["close"], record["high"], record["low"], record["volume"]))
+
+        trades = pd.DataFrame(records, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
+        trades = trades.sort_values(by='time')
+        # print('len trade', len(trades))
+        if trades.empty:
+            trades.loc[-1] = self.image_mean_price
+
+        return trades.iloc[0]
 
     def trades_to_normal_image(self, trades):
         # Initialize image channels
@@ -169,22 +216,27 @@ class ObserverM(Observer):
             price = trade['price']
             quantity = trade['quantity']
             # trade_time = convert_timestamp_to_float(trade['time'])
+            trade_time = trade['time']
 
             # NORMILIZING
             price_norm = (price - self.min_all_prices) / (self.max_all_prices - self.min_all_prices)
             # quantity_norm = (quantity - self.mean_all_qty) / self.var_all_qty
             quantity_norm = (quantity - self.min_all_qty) / (self.max_all_qty - self.min_all_qty)
-            # time_norm = (trade_time - self.min_all_time) / (self.max_all_time - self.min_all_time)
-
+            # Time cyclic normalization within a day (0-86400 seconds)
+            total_seconds_in_day = 86400
+            seconds_since_midnight = (
+                    trade_time - trade_time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+            time_norm = np.sin(2 * np.pi * (seconds_since_midnight / total_seconds_in_day))
+            time_norm = (time_norm + 1) / 2  # for change the range between 0 to 1
             row = j // self.buffer_size
             col = j % self.buffer_size
 
-            price_channel[row, col] = round(price_norm, 5)
-            # time_channel[row, col] = round(trade_time, 5)
+            price_channel[row, col] = price_norm
+            time_channel[row, col] = time_norm
             if side == 'buy':
-                buy_channel[row, col] = round(quantity_norm, 5)
+                buy_channel[row, col] = quantity_norm
             else:
-                sell_channel[row, col] = round(quantity_norm, 5)
+                sell_channel[row, col] = quantity_norm
 
             # print('[%d,%d]' % (row, col))
             # print('side:', side)
@@ -192,7 +244,7 @@ class ObserverM(Observer):
             # print("quantity = %f, quantity time=%f" % (quantity, quantity_norm))
             # print("price = %f, norm price=%f" % (price, price_norm))
 
-        # image = np.stack((buy_channel, sell_channel, price_channel, time_channel), axis=2)
-        image = np.stack((buy_channel, sell_channel, price_channel), axis=2)
+        image = np.stack((buy_channel, sell_channel, price_channel, time_channel), axis=2)
+        # image = np.stack((buy_channel, sell_channel, price_channel), axis=2)
         print('CONVERT trade to image step:', self.step)
         return image

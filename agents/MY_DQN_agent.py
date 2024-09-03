@@ -7,8 +7,10 @@ from keras.layers import Dense, Flatten, Dropout, ZeroPadding2D, Convolution2D, 
 from keras.optimizers import Adam
 import random
 from env.environment import TradingEnv
+import datetime as dt
 
-class DQNAgent:
+
+class MYDQNAgent:
     def __init__(self, config):
         self.env = TradingEnv(trading_pair='BTC/USD', config=config)
         self.observation_shape = self.env.observation_space.shape
@@ -17,6 +19,7 @@ class DQNAgent:
         self.model_path = config['model_weights_path']
         self.memory = []
         self.gamma = 0.7
+        self.beta = 0.3
         self.epsilon = 0.2
         self.epsilon_decay = 0.99
         self.epsilon_min = 0.01
@@ -31,12 +34,13 @@ class DQNAgent:
         self.test_action_time = []
         # Q-network
         self.model = self._build_q_network()
+
         # Target network
         self.target_model = self._build_q_network()
 
         # Synchronize target model weights with the Q-network
-        # self.load_weights()
-        self.update_target_network()
+        self.load_weights()
+        # self.update_target_network()
 
     def _build_modified_vgg16(self):
         vgg = VGG16(weights='imagenet', include_top=False)
@@ -82,6 +86,42 @@ class DQNAgent:
         q_values = self.model.predict(state)
         return np.argmax(q_values[0])
 
+    def calculate_max_reward(self, next_state_i):
+        best_trade_index = None
+        if next_state_i + self.buffer_size ** 2 < len(self.env.observer.trades):
+            last_trade = self.env.observer.trades.iloc[next_state_i + self.buffer_size ** 2]
+        else:
+            last_trade = self.env.observer.trades.iloc[-1]
+
+        trade_time = last_trade['time']
+        if trade_time.minute < 15:
+            start = trade_time - dt.timedelta(minutes=30)
+        else:
+            start = trade_time
+        end = start + dt.timedelta(minutes=30)
+        # change format to Flux suitable format
+        start = start.strftime('%Y-%m-%dT%H:%M:%SZ')
+        end = end.strftime('%Y-%m-%dT%H:%M:%SZ')
+        ohlcv = self.env.observer.query_ohlcv_by_time(start, end)
+
+        #find Best next action Reward MaxR`
+        trades = self.env.observer.trades[next_state_i - self.buffer_size ** 2:next_state_i]
+        index = next_state_i - self.buffer_size ** 2
+        max_reward = {'index': index, 'quantity': 0, 'price': 0, 'side': 0, 'reward': 0}
+        for j, trade in trades.iterrows():
+            reward = trade['quantity']*(ohlcv['close'] - trade['price'])
+            if reward < 0 and trade['side'] == 'sell':
+                reward *= -1
+            if reward > max_reward['reward']:
+                max_reward['index'] = index
+                max_reward['quantity'] = trade['quantity']
+                max_reward['price'] = trade['price']
+                max_reward['side'] = trade['side']
+                max_reward['reward'] = round(reward, 5)
+            index += 1
+        print('max reward in current state',max_reward)
+        return max_reward['reward']
+
     def replay(self):
         if len(self.memory) < self.batch_size:
             return
@@ -89,18 +129,22 @@ class DQNAgent:
         minibatch = random.sample(self.memory, self.batch_size)
 
         states = []
-        # actions = np.array([m[1] for m in minibatch])
-        # rewards = np.array([m[2] for m in minibatch])
-        # next_states = np.array([m[3] for m in minibatch])
-        # dones = np.array([m[4] for m in minibatch])
         target_q_values = []
-        for state, action, reward, next_state, done, next_state_image_i in minibatch:
+        for state, action, reward, next_state, done, next_state_i in minibatch:
             states.append(state)
             if done:
                 target_q_values.append(reward)
             if not done:
+                max_reward_next_state = self.calculate_max_reward(next_state_i)  # Assuming next_states[i] represents trade rewards
+
                 next_q_values = self.target_model.predict(np.expand_dims(next_state, axis=0))[0]
-                target_q_values.append(reward + self.gamma * np.amax(next_q_values))
+                target_q_values.append(
+                    reward + self.gamma * (self.beta * max_reward_next_state + (1 - self.beta) * np.max(next_q_values)))
+
+                # print(
+                # 'r + gamma * (beta * max_reward + (1 - beta) * target_q_value) = %f + %f * (%f * %f + %f * %f) = %f' %
+                # (reward, self.gamma, self.beta, max_reward_next_state, 1 - self.beta, np.max(next_q_values),
+                #  reward + self.gamma * (self.beta * max_reward_next_state + (1 - self.beta) * np.max(next_q_values))))
 
             # target_f = self.model.predict(np.expand_dims(state, axis=0))
             # target_f[0][action] = target
@@ -131,36 +175,37 @@ class DQNAgent:
             done = False
 
             while not done:
-                print('*******************************start while')
+                print('*******************************start while iteration:%d' %(episode))
                 action = self.act(state)
                 print('action is', action)
 
-                next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance, next_state_image_i = self.env.step(
+                next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance, next_state_i = self.env.step(
                     action, self.usdt_balance, self.btc_balance)
                 if done:
                     break
                 print('reward after one step in Environment is ', reward)
-                self.memory.append((state, action, reward, next_state, done, next_state_image_i))
+                self.memory.append((state, action, reward, next_state, done, next_state_i))
                 state = next_state
                 self.replay()
                 self.state_action.append(action)
                 self.state_reward.append(reward)
                 self.action_time.append(next_state[0, 0, 3])
                 episode_reward += reward
-                episode_profit += (self.btc_balance * next_state_price + self.usdt_balance) - 1000
-                if self.env.step_count % 50 == 0:
+                if self.env.step_count % 30 == 0:
                     self.update_target_network()
-            rewards_log.append(episode_reward)
+                    self.save_weights()
+                episode_profit += ((self.btc_balance * next_state_price + self.usdt_balance) - 1000)
+            rewards_log.append(episode_reward/self.env.step_count)
             profits_log.append(episode_profit/self.env.step_count)
             print(f"Episode: {episode + 1}, Reward: {episode_reward}, Profit: {episode_profit}")
 
         # Save the model weights at the end of training
         print('Save the model weights at the end of training')
-        self.save_weights()
+
 
         # Save logs to file
         print('# Save logs to file')
-        with open('training_logs_dqn_4channel_16_1.csv', 'w', newline='') as file:
+        with open('result/training_logs_MY_dqn_4channel_16_4.csv', 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['Episode', 'Reward', 'Profit'])
             for i in range(num_episodes):
@@ -202,11 +247,11 @@ class DQNAgent:
         print('test action time len:',len(self.test_action_time))
 
     def save_weights(self):
-        self.model.save_weights(os.path.join(self.model_path, 'dqn_4channel_16_1.h5'))
+        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_4.h5'))
 
     def load_weights(self):
-        if os.path.exists(os.path.join(self.model_path, 'dqn_4channel_16_1.h5')):
-            self.model.load_weights(os.path.join(self.model_path, 'dqn_4channel_16_1.h5'))
-            self.target_model.load_weights(os.path.join(self.model_path, 'dqn_4channel_16_1.h5'))
+        if os.path.exists(os.path.join(self.model_path, 'MY_dqn_4channel_16_3.h5')):
+            self.model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_3.h5'))
+            self.target_model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_3.h5'))
             print("Loaded model weights.")
 

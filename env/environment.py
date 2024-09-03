@@ -30,25 +30,26 @@ class TradingEnv(gym.Env):
 
         self.step_count = 0
         self.current_state = None
-        self.current_state_mean_price = 0
+        self.current_state_price = 0
+        print('ENVIRONMENT object Ceated')
 
     def step(self, action_index, usdt_balance, btc_balance):
         print('NOW IN ENVIRONMENT STEP: ', self.step_count)
         action = self.action_scheme.actions[action_index]
-        usdt_balance, btc_balance = self.action_scheme.perform(action, usdt_balance, btc_balance, self.current_state_mean_price)
-        current_price = self.current_state_mean_price
-        next_state, self.current_state_mean_price = self.observer.observe()
+        usdt_balance, btc_balance = self.action_scheme.perform(action, usdt_balance, btc_balance, self.current_state_price)
+        current_price = self.current_state_price
+        next_state_i = self.observer.next_image_i
+        next_state, self.current_state_price = self.observer.observe()
+        # self.observer.next_image_i -= self.observer.slice_size
 
-        new_state_price = self.current_state_mean_price
+        new_state_price = self.current_state_price
         # reward = self.reward_scheme.reward(action, current_price, new_state_price)
         reward = self.reward_scheme.reward(usdt_balance, btc_balance, action, current_price, new_state_price)
         self.current_state = next_state
         self.step_count += 1
         # Define when the episode is done
         done = False
-        if self.current_state_mean_price == -1:
-            return [[-1], -1, -1, True, usdt_balance, btc_balance]
-        if usdt_balance < 0 or btc_balance < 0 or self.step_count >= self.max_steps:
+        if usdt_balance < 0 or btc_balance < 0 or len(self.current_state) == 1 or self.step_count >= self.max_steps:
             done = True
             print("Episode finished:")
             if usdt_balance <= 0:
@@ -57,7 +58,9 @@ class TradingEnv(gym.Env):
                 print("BTC balance fell to 0 or below.")
             if self.step_count >= self.max_steps:
                 print("Reached maximum number of steps.")
-        return [next_state, self.current_state_mean_price,  reward, done, usdt_balance, btc_balance]
+            if len(self.current_state) == -1:
+                print('THE current state is -1')
+        return [next_state, self.current_state_price,  reward, done, usdt_balance, btc_balance, next_state_i]
 
     def calculate_max_q(self, next_state):
         next_next_state, next_next_mean_price = self.observer.observe()
@@ -75,8 +78,8 @@ class TradingEnv(gym.Env):
         print('NOW ENVIRONMENT IS RESESING >>>> ')
         self.step_count = 0
         self.observer.reset()
-        self.current_state, self.current_state_mean_price = self.observer.observe()
-        return self.current_state, self.current_state_mean_price
+        self.current_state, self.current_state_price = self.observer.observe()
+        return self.current_state, self.current_state_price
 
     def render(self, mode='human'):
         pass

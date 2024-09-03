@@ -25,8 +25,8 @@ class SimpleProfit(RewardScheme):
         print('IN SimpleProfit Reward SChema')
 
     def reward(self, usdt_balance, btc_balance, action, current_price, new_state_price) -> float:
-        # return self.simpleProfit(action, current_price, new_state_price)
-        return self.logProfit(usdt_balance, btc_balance, current_price, new_state_price)
+        return self.simpleProfit(action, current_price, new_state_price)
+        # return self.logProfit(usdt_balance, btc_balance, current_price, new_state_price)
 
     def calculate_reward(self, state) -> float:
         """Rewards the agent for incremental increases in net worth over a sliding window."""
@@ -46,7 +46,10 @@ class SimpleProfit(RewardScheme):
     def simpleProfit(self, action, current_price, new_state_price):
         print('IN simpleProfit action: %f, current_price : %f, new_state_price: %f' % (
             action, current_price, new_state_price))
-        return round(action * ((new_state_price - current_price) / new_state_price) * 1000, 1)
+        reward = round(action * ((new_state_price - current_price)/current_price*100), 3)
+        if reward == -0.00:
+            reward = 0
+        return reward
 
     def logProfit(self, usdt_balance, btc_balance, current_price, new_state_price):
         print('IN LogProfit usdt: %f, btc: %f, current_price : %f, new_state_price: %f' % (

@@ -21,7 +21,7 @@ producer = KafkaProducer(
 
 
 def fetch_trades(symbol):
-    url = "https://api.hitbtc.com/api/3/public/trades/" + symbol + "?sort=DESC"
+    url = "https://api.hitbtc.com/api/3/public/trades/" + symbol + "?limit=1000sort=DESC"
     response = requests.get(url)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
@@ -34,15 +34,15 @@ def main():
             trades = fetch_trades(symbol='BTCUSDT')
             trades.insert(0, 'BTCUSDT')
             producer.send('trades', trades)
-            time.sleep(20)
             print('this is after BTCUSDT')
+            time.sleep(20)
 
             print('this is before ETHBTC')
             trades = fetch_trades(symbol='ETHBTC')
             trades.insert(0, 'ETHBTC')
             producer.send('trades', trades)
-            time.sleep(20)
             print('this is after ETHBTC')
+            time.sleep(20)
 
             print('this is before ETHUSDT')
             trades = fetch_trades(symbol='ETHUSDT')
@@ -51,7 +51,7 @@ def main():
             print('this is after ETHBTC')
             producer.flush()  # Ensure all messages are sent
             logger.info("Flush(Sent) trades data to Kafka")
-            time.sleep(40)
+            time.sleep(600)
 
         except requests.RequestException as e:
             logger.error(f"Error fetching trades: {e}")

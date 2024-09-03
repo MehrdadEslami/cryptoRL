@@ -6,8 +6,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
-from agents.DDPG_agent import DDPGAgent
-from agents.DQN_agent import DQNAgent
+# from agents.DDPG_agent import DDPGAgent
+# from agents.DQN_agent import DQNAgent
+# from agents.SAC_agent import SACAgent
+# from agents.ActorCritic_agent import ActorCriticAgent
+# from agents.MY_DQN_agent import MYDQNAgent
+from agents.LSTM_DQN_agent import LSTMDQNAgent
 
 with open("config.json", "r") as file:
     config = json.load(file)
@@ -45,15 +49,40 @@ def plot_training_logs(filename):
     plt.grid(True)
 
     # plt.show()
-    plt.savefig('training_logs_dqn_64_1.png')
+    plt.savefig('result/training_logs_lstm_dqn_4channel_32_1.png')
     print('done')
 
 
 if __name__ == "__main__":
+    # agent = ActorCriticAgent(config)
     # agent = DDPGAgent(config)
-    agent = DQNAgent(config)
+    # agent = DQNAgent(config)
+    # agent = MYDQNAgent(config)
+    agent = LSTMDQNAgent(config)
+
     print('After Creating Agent in Main')
 
-    # Usage
-    agent.train(num_episodes=50)
-    plot_training_logs('training_logs_dqn_64_1.csv')
+
+    # Train
+    agent.train(num_episodes=100)
+    plot_training_logs('result/training_logs_lstm_dqn_4channel_32_1.csv')
+
+    #test
+    # agent.load_weights()
+    # agent.test()
+
+
+#test code
+
+# state, _ = agent.env.reset()
+# action_probs = agent.actor_model.predict(np.expand_dims(state, axis=0))[0]
+# action = np.random.choice(agent.env.action_space.n, p=action_probs)
+# next_state, next_state_price, reward, done, agent.usdt_balance, agent.btc_balance, next_state_image_i = agent.env.step(
+#                     action, agent.usdt_balance, agent.btc_balance)
+# for i in range(16):
+#     agent.memory.append((state, action, reward, next_state, done, next_state_image_i))
+#
+# import random
+# minibatch = random.sample(agent.memory, agent.batch_size)
+# state, action, reward, next_state, done, next_state_i = minibatch[9]
+# action_index_, max_reward = agent.calculate_max_reward(next_state_i)
