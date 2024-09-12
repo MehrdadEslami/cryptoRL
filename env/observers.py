@@ -128,7 +128,7 @@ class ObserverM(Observer):
         if ohlcv is list:
             return image, self.image_mean_price
         else:
-            return image, ohlcv['high']
+            return image, ohlcv['low']
 
     def reset(self) -> None:
         print('ITS RESETING OBSERVER ..... ')

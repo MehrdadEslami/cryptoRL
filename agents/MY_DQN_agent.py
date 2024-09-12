@@ -1,5 +1,7 @@
 import csv
 import os
+import pandas as pd
+
 import numpy as np
 from keras.applications import VGG16
 from keras.models import Model, Sequential
@@ -30,8 +32,10 @@ class MYDQNAgent:
 
         self.usdt_balance = 1000
         self.btc_balance = 0
-        self.test_action = []
-        self.test_action_time = []
+        self.state_reward = []
+        self.state_action = []
+        self.action_time = []
+        self.loss = []
         # Q-network
         self.model = self._build_q_network()
 
@@ -109,7 +113,7 @@ class MYDQNAgent:
         index = next_state_i - self.buffer_size ** 2
         max_reward = {'index': index, 'quantity': 0, 'price': 0, 'side': 0, 'reward': 0}
         for j, trade in trades.iterrows():
-            reward = trade['quantity']*(ohlcv['close'] - trade['price'])
+            reward = trade['quantity']*( (ohlcv['close'] - trade['price'])/trade['price']*100)
             if reward < 0 and trade['side'] == 'sell':
                 reward *= -1
             if reward > max_reward['reward']:
@@ -119,7 +123,7 @@ class MYDQNAgent:
                 max_reward['side'] = trade['side']
                 max_reward['reward'] = round(reward, 5)
             index += 1
-        print('max reward in current state',max_reward)
+        # print('max reward in current state',max_reward)
         return max_reward['reward']
 
     def replay(self):
@@ -152,10 +156,12 @@ class MYDQNAgent:
         states = np.array(states)
         print('states shape', states.shape)
         print('target shape', target_q_values.shape)
-        self.model.train_on_batch(states, target_q_values)
+        loss = self.model.train_on_batch(states, target_q_values)
+        print('loss', loss)
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+        return loss
 
     def train(self, num_episodes=1):
         rewards_log = []
@@ -171,6 +177,7 @@ class MYDQNAgent:
             self.state_reward = []
             self.state_action = []
             self.action_time = []
+            self.loss = []
             self.memory = []
             done = False
 
@@ -186,72 +193,89 @@ class MYDQNAgent:
                 print('reward after one step in Environment is ', reward)
                 self.memory.append((state, action, reward, next_state, done, next_state_i))
                 state = next_state
-                self.replay()
+                loss = self.replay()
                 self.state_action.append(action)
                 self.state_reward.append(reward)
                 self.action_time.append(next_state[0, 0, 3])
+                self.loss.append(loss)
                 episode_reward += reward
                 if self.env.step_count % 30 == 0:
                     self.update_target_network()
                     self.save_weights()
                 episode_profit += ((self.btc_balance * next_state_price + self.usdt_balance) - 1000)
+                print(f"Episode: {episode}, Action: {action}, Reward: {reward}, loss: {loss}")
+
             rewards_log.append(episode_reward/self.env.step_count)
             profits_log.append(episode_profit/self.env.step_count)
             print(f"Episode: {episode + 1}, Reward: {episode_reward}, Profit: {episode_profit}")
 
+            with open('result/temp_state.csv', 'a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['episode', 'action', 'Reward', 'loss', 'action_time'])
+                for i in range(len(self.state_action)):
+                    # writer.writerow([self.state_action[i], self.state_reward[i], self.action_time[i]])
+                    writer.writerow([episode, self.state_action[i],
+                                    self.state_reward[i], self.loss[i], self.action_time[i]])
         # Save the model weights at the end of training
         print('Save the model weights at the end of training')
 
 
         # Save logs to file
         print('# Save logs to file')
-        with open('result/training_logs_MY_dqn_4channel_16_4.csv', 'w', newline='') as file:
+        with open('result/temp_episode.csv', 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['Episode', 'Reward', 'Profit'])
             for i in range(num_episodes):
                 writer.writerow([i + 1, rewards_log[i], profits_log[i]])
 
-        # with open('training_state_logs_dqn_64_1.csv', 'w', newline='') as file:
-        #     writer = csv.writer(file)
-        #     writer.writerow(['action', 'Reward', 'action_time'])
-        #     for i in range(len(self.state_action)):
-        #         # writer.writerow([self.state_action[i], self.state_reward[i], self.action_time[i]])
-        #         writer.writerow([self.state_action[i], self.state_reward[i]])
-
     def test(self):
-        self.usdt_balance = 1000
+        self.usdt_balance = 10000
         self.btc_balance = 0
         state, _ = self.env.reset()
         episode_reward = 0
-
+        self.memory = []
         done = False
+
         while not done:
             print('*******************************start while')
-            action = self.act(state)
+            state = np.array(state)
+            state = np.expand_dims(state, axis=0)
+            print('in act function with state shape', state.shape)
+            q_values = self.model.predict(state)
+            action = np.argmax(q_values[0])
             print('action is', action)
-            self.test_action.append(action)
             if self.env.observer.next_image_i < len(self.env.observer.trades):
-                self.test_action_time.append(self.env.observer.trades['time'].iloc[self.env.observer.next_image_i])
-            next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance = self.env.step(
+                action_time = self.env.observer.trades['time'].iloc[self.env.observer.next_image_i]
+
+            next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance, _ = self.env.step(
                 action, self.usdt_balance,
                 self.btc_balance)
-
+            self.memory.append((action, action_time, next_state_price))
+            print('action is', action)
+            print('action time is', action_time)
             if done:
                 break
+            state = next_state
             print('reward after one step in Environment is ', reward)
 
             episode_reward += reward
 
             print(f"Reward: {episode_reward}")
-        print('test action len:',len(self.test_action))
-        print('test action time len:',len(self.test_action_time))
+
+        # Save logs to file
+        print('# Save logs to file')
+        with open('result/article/test_action_%s_%s.csv' % (self.env.observer.slice_size, self.env.symbol), 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['i', 'action', 'action_time', 'action_price'])
+            for i in range(len(self.memory)):
+                writer.writerow((i, self.memory[i][0], self.memory[i][1], self.memory[i][2]))
 
     def save_weights(self):
-        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_4.h5'))
+        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5'))
 
     def load_weights(self):
-        if os.path.exists(os.path.join(self.model_path, 'MY_dqn_4channel_16_3.h5')):
-            self.model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_3.h5'))
-            self.target_model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_3.h5'))
+        if os.path.exists(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5')):
+            self.model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5'))
+            self.target_model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5'))
             print("Loaded model weights.")
 

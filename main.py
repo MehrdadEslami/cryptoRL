@@ -10,8 +10,8 @@ import numpy as np
 # from agents.DQN_agent import DQNAgent
 # from agents.SAC_agent import SACAgent
 # from agents.ActorCritic_agent import ActorCriticAgent
-# from agents.MY_DQN_agent import MYDQNAgent
-from agents.LSTM_DQN_agent import LSTMDQNAgent
+from agents.MY_DQN_agent import MYDQNAgent
+# from agents.LSTM_DQN_agent import LSTMDQNAgent
 
 with open("config.json", "r") as file:
     config = json.load(file)
@@ -49,7 +49,7 @@ def plot_training_logs(filename):
     plt.grid(True)
 
     # plt.show()
-    plt.savefig('result/training_logs_lstm_dqn_4channel_32_1.png')
+    plt.savefig('temp.png')
     print('done')
 
 
@@ -57,15 +57,16 @@ if __name__ == "__main__":
     # agent = ActorCriticAgent(config)
     # agent = DDPGAgent(config)
     # agent = DQNAgent(config)
-    # agent = MYDQNAgent(config)
-    agent = LSTMDQNAgent(config)
+    agent = MYDQNAgent(config)
+    # agent = LSTMDQNAgent(config)
 
     print('After Creating Agent in Main')
 
 
     # Train
-    agent.train(num_episodes=100)
-    plot_training_logs('result/training_logs_lstm_dqn_4channel_32_1.csv')
+    # agent.train(num_episodes=20)
+    # plot_training_logs('result/temp.csv')
+    agent.test()
 
     #test
     # agent.load_weights()

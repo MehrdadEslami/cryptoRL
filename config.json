@@ -19,7 +19,7 @@
     "ETHUSDT"
   ],
   "symbol":"ETHUSDT",
-  "buffer_size": "32",
+  "buffer_size": "16",
   "slice_size": "512",
   "batch_size" : "16",
   "max_steps": "10000",

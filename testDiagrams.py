@@ -1,3 +1,4 @@
+import csv
 import random
 
 from influxdb_client import InfluxDBClient
@@ -11,6 +12,7 @@ import matplotlib.pyplot as plt
 import datetime as dt
 
 # from agents.DQN_agent import DQNAgent
+# from agents.MY_DQN_agent import MYDQNAgent
 
 with open("config.json", "r") as file:
     config = json.load(file)
@@ -23,8 +25,6 @@ bucket_ohlcv = influxdb_config['bucket_ohlcv']
 org = influxdb_config['org']
 url = influxdb_config['url']
 
-
-
 times2 = []
 times = []
 price = []
@@ -32,7 +32,6 @@ count = []
 count2 = []
 price2 = []
 times3 = []
-
 
 def merge_count_price():
     i, j = 0, 0
@@ -51,6 +50,7 @@ def merge_count_price():
 
 
 class Query:
+
     def __init__(self, local_config):
         start = local_config['start']
         end = local_config['end']
@@ -90,6 +90,7 @@ class Query:
 
         d = {'_time': times, 'count': count}
         df = pd.DataFrame(d)
+        df.set_index('_time', inplace=True)
         # change temp
         # df._set_value(20, 'count', 0.9)
 
@@ -155,7 +156,7 @@ class Query:
         # Set the time as the index for plotting
         # df.set_index('_time', inplace=True)
 
-        #change temp
+        # change temp
         df._set_value(20, 'count', 0.9)
 
         # Plot the bar chart
@@ -180,7 +181,7 @@ class Query:
         plt.figure(figsize=(9, 3))
         plt.bar(range(len(df)), df['count'], width=0.8, color=c, label=label)
 
-        plt.title("Number of Trades %s Per 1Hour" % label)
+        plt.title("Number of Trades %s Per 24Hour" % label)
         plt.xlabel('Time ')
         plt.ylabel('Number of Trades')
         # plt.annotate()
@@ -191,85 +192,141 @@ class Query:
         plt.savefig(filename)
         print('DONE')
 
-    # def price_action(self, actions_time, actions):
-    #     query = f'''
-    #             from(bucket: "tradeBucket")
-    #               |> range(start: {start}, stop: {end})
-    #               |> filter(fn: (r) => r["_measurement"] == "trades")
-    #               |> filter(fn: (r) => r["_field"] == "price") // Use the trade ID field for counting trades
-    #               |> filter(fn: (r) => r["symbol"] == "BTCUSDT")
-    #               |> aggregateWindow(every: 1h, fn: mean, createEmpty: false) // Count trades every hour
-    #               |> yield(name: "mean")
-    #             '''
-    #     # print(query)
-    #     tables_price = query_api.query(query)
-    #     client.close()
-    #
-    #     i = 0
-    #     for table in tables_price:
-    #         for record in table:
-    #             t = pd.to_datetime(record['_time'])
-    #             times.append(t)
-    #             index.append(i)
-    #             i += 1
-    #             price.append(record['_value'])
-    #     d = {'index': index, '_time': times, 'price': price}
-    #     df = pd.DataFrame(d)
-    #     # Set the time as the index for plotting
-    #     df.set_index('index', inplace=True)
-    #
-    #     print('\ntime', times)
-    #     print('price', price)
-    #     print('time len', len(times))
-    #     print('price len', len(price))
-    #     print('df len', len(df))
-    #
-    #     # Plot the price line
-    #     plt.figure(figsize=(12, 6))
-    #     df['price'].plot(label='BTC Price', color='blue', linewidth=3.0)
-    #
-    #     # Add random triangles at 12-hour intervals
-    #     # num_triangles = len(df) // 8  # Number of triangles to add
-    #     for action_time, action in zip(actions_time, actions):
-    #         # Find the closest price point for the action_time
-    #         closest_time_idx = df['_time'].sub(action_time).abs().idxmin()
-    #         closest_price = df.loc[closest_time_idx, 'price']
-    #
-    #         # Determine the color and orientation of the triangle based on the action
-    #         if action == 0:
-    #             color = 'red'
-    #             marker = '^'  # Upward triangle
-    #             size = 200
-    #         elif action == 1:
-    #             color = 'red'
-    #             marker = '^'  # Upward triangle
-    #             size = 100
-    #         elif action in [3, 4]:
-    #             color = 'green'
-    #             marker = 'v'  # Downward triangle
-    #             size = 200
-    #         else:
-    #             continue  # Skip actions that are not 0, 1, 3, or 4
-    #
-    #         # Plot the triangle
-    #         plt.scatter(closest_time_idx, closest_price, color=color, marker=marker, s=size, label=f'Action {action}')
-    #
-    #     # Customize the plot
-    #     plt.title('Price Diagram with Buy/Sell Actions (Triangles)')
-    #     plt.xlabel('Time')
-    #     plt.ylabel('Price')
-    #     # plt.legend(loc='best')
-    #     plt.xticks(rotation=45)
-    #     plt.tight_layout()
-    #
-    #     # Show the plot
-    #
-    #     # Ensure layout fits well
-    #     plt.tight_layout()
-    #
-    #     # Show the plot
-    #     plt.savefig('plots/test_action.png')
-    #     return i
+    def plot_from_csv(self, filename, x, y, xlabel, ylabel):
+        # Read data from CSV
+        data = pd.read_csv(filename)
+        data['Reward'] *= 500
+        # t = np.zeros(100)
+        # for i in range(100):
+        #     t[99 - i] = data.iloc[i]['Reward']
+        # Set dark background
+        plt.style.use('dark_background')
+
+        # Create the plot
+        plt.figure(figsize=(10, 6))
+
+        plt.plot(data[x], data[y], label='loss value', marker='o')
+
+        # Set labels
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title('Reward values for MY_DQN model')
+        # Set grid
+        plt.grid(True, color='gray', linestyle='--', linewidth=0.5)
+        plt.legend()
+        # Show the plot
+        print('Creating plot -----')
+        plt.savefig('result/reward-MY4.png')
+        print('done')
+
+    def price_action(self, filename):
+        query = f'''
+                   from(bucket: "{bucket_ohlcv}")
+                     |> range(start: {self.start_time}, stop: {self.stop_time})
+                     |> filter(fn: (r) => r["_measurement"] == "ohlcvBucket")
+                     |> filter(fn: (r) => r["_field"] == "close") // Use the trade ID field for counting trades
+                     |> filter(fn: (r) => r["symbol"] == "{self.symbol}")
+                     |> aggregateWindow(every: {self.window}, fn: mean, createEmpty: false) // Count trades every hour
+                     |> yield(name: "mean")
+                   '''
+        # print(query2)
+        tables_price = query_api.query(query)
+        client.close()
+
+        j = 0
+        for table in tables_price:
+            for record in table:
+                t = pd.to_datetime(record['_time'])
+                times.append(t)
+                price.append(record['_value'])
+        # Save logs to file
+        print('# Save ohlcv to file')
+        with open('result/article/test_close_%s.csv' % self.symbol, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['times', 'close'])
+            for i in range(len(times)):
+                writer.writerow((times[i], price[i]))
+
+        plt.figure(figsize=(12, 6))
+        plt.style.use('dark_background')
+
+        # Customize the plot
+        plt.title('Price Diagram with Buy/Sell Actions (Triangles) %s'%self.symbol)
+        plt.xlabel('Time')
+        plt.ylabel('Price')
+        # plt.xticks(rotation=45)
+        plt.plot(times, price, color='white', label='price')
+
+        # read csv file
+        data = pd.read_csv(filename)
+        num = 1
+        for action, action_time, action_price in zip(data['action'], data['action_time'], data['action_price']):
+            print('action in for', action)
+            print('action in for', action_time)
+            if action_price == 0: continue
+            if action == 0:
+                plt.scatter(pd.to_datetime(action_time), action_price, color='red', marker='v', s=100, label=f'{num}')
+            elif action == 1:
+                plt.scatter(pd.to_datetime(action_time), action_price, color='red', marker='v', s=100, label=f'{num}')
+            elif action == 3:
+                plt.scatter(pd.to_datetime(action_time), action_price, color='green', marker='^', s=100, label=f'{num}')
+            if action == 4:
+                plt.scatter(pd.to_datetime(action_time), action_price, color='green', marker='^', s=100, label=f'{num}')
+            elif action == 2:
+                plt.scatter(pd.to_datetime(action_time), action_price, color='yellow', marker='*', s=100, label=f'{num}')
+            # plt.annotate(str(num), xy=(action_time, action_price-100))
+            num += 1
+            # # Find the closest price point for the action_time
+            # closest_time_idx = df['_time'].sub(action_time).abs().idxmin()
+            # closest_price = df.loc[closest_time_idx, 'price']
+        #
+
+        # Show the plot
+
+
+        # Ensure layout fits well
+        plt.tight_layout()
+        # Show the plot
+        print('Creating plot ....')
+        plt.savefig('result/article/test_my_dqn_%s_%s.png' % (config['slice_size'], self.symbol))
+        print('save done')
+        return j
+
+    def price_action_plot_from_csv(self):
+        # Read data from CSV
+        filename_ohlcv = 'result/test_close_%s.csv' % self.symbol
+        filename_action = 'result/test_action_%s_e.csv' % self.symbol
+
+        data_ohlcv = pd.read_csv(filename_ohlcv)
+
+        plt.style.use('dark_background')
+
+        # Create the plot
+        plt.figure(figsize=(10, 6))
+
+        plt.plot(data_ohlcv['times'], data_ohlcv['close'], label='price %s'%self.symbol, color = 'white')
+
+        # Set labels
+        plt.xlabel('time')
+        plt.ylabel('price')
+        plt.title('Price Diagram with Sell/Buy actions (triangles) %s'%self.symbol)
+        data = pd.read_csv(filename_action)
+        num = 1
+        for action, action_time, action_price in zip(data['action'], data['action_time'], data['action_price']):
+            if action_price == 0: continue
+            if action < 2:
+                plt.scatter(action_time, action_price, color='red', marker='v', s=100, label=f'{num}')
+            elif action > 2:
+                plt.scatter(action_time, action_price, color='green', marker='^', s=100, label=f'{num}')
+            elif action == 2:
+                plt.scatter(action_time, action_price, color='yellow', marker='+', s=100,
+                            label=f'{num}')
+            # plt.annotate(str(num), xy=(action_time, action_price-100))
+            num += 1
+        # Show the plot
+        print('Creating plot -----')
+        plt.savefig('result/test_action_%s_e.png'%self.symbol)
+        print('done')
 
 
 # i, j = query_trades_count()
@@ -384,27 +441,21 @@ class Query:
 # plt.savefig('plots/volume_quantity_csv.png')
 
 local_config = {
-    'start': dt.datetime.fromisoformat('2024-08-29T00:00:00'),
-    'end': dt.datetime.fromisoformat('2024-09-03T12:30:00'),
-    'symbol': 'BTCUSDT',
-    'window': '1h'
+    'start': dt.datetime.fromisoformat('2024-07-20T00:00:00'),
+    'end': dt.datetime.fromisoformat('2024-09-12T00:00:00'),
+    'symbol': config['symbol'],
+    'window': '30m'
 }
 q = Query(local_config)
 # df = q.query_trades_count()
 
-q.symbol = 'BTCUSDT'
-df = q.query_trades_count()
-q.plot_count(df, 'BTCUSDT', 'red', 'plots/_trades_count_BU_1h.png')
+# q.symbol = 'BTCUSDT'
+# df = q.query_trades_count()
+# q.plot_count(df, 'BTCUSDT', 'red', 'plots/_trades_count_BU_24h.png')
 
-times = []
-count = []
-q.symbol = 'ETHBTC'
-df_EB = q.query_trades_count()
-q.plot_count(df_EB, 'ETHBTC', 'green', 'plots/_trades_count_EB_1h.png')
-
-q.symbol = 'ETHUSDT'
-times = []
-count = []
-df_EU = q.query_trades_count()
-q.plot_count(df_EU, 'ETHUSDT', 'blue', 'plots/_trades_count_EU_1h.png')
-
+# q.plot_from_csv('result/training_logs_MY_dqn_4channel_16_2.csv', 'Episode', 'reward3', 'Epoch', 'Reward')
+# agent = MYDQNAgent(config)
+# print('After Creating Agent in Main')
+# agent.test()
+q.price_action('result/article/test_action_%s_%s.csv' % (config['slice_size'], q.symbol))
+# q.price_action_plot_from_csv()
