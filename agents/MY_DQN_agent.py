@@ -229,7 +229,7 @@ class MYDQNAgent:
                 writer.writerow([i + 1, rewards_log[i], profits_log[i]])
 
     def test(self):
-        self.usdt_balance = 10000
+        self.usdt_balance = 1000
         self.btc_balance = 0
         state, _ = self.env.reset()
         episode_reward = 0
@@ -243,6 +243,7 @@ class MYDQNAgent:
             print('in act function with state shape', state.shape)
             q_values = self.model.predict(state)
             action = np.argmax(q_values[0])
+
             print('action is', action)
             if self.env.observer.next_image_i < len(self.env.observer.trades):
                 action_time = self.env.observer.trades['time'].iloc[self.env.observer.next_image_i]
@@ -264,14 +265,16 @@ class MYDQNAgent:
 
         # Save logs to file
         print('# Save logs to file')
-        with open('result/article/test_action_%s_%s.csv' % (self.env.observer.slice_size, self.env.symbol), 'w', newline='') as file:
+        d = dt.datetime.fromisoformat(self.env.observer.last_trade_time)
+        filename_date = '%s:%s:%s-%s:%s' % (d.year, d.month, d.day, d.hour, d.minute)
+        with open('result/article/test_action_%s_%s_%s.csv' % (self.env.observer.slice_size, self.env.symbol,filename_date), 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['i', 'action', 'action_time', 'action_price'])
             for i in range(len(self.memory)):
                 writer.writerow((i, self.memory[i][0], self.memory[i][1], self.memory[i][2]))
 
     def save_weights(self):
-        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5'))
+        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_6.h5'))
 
     def load_weights(self):
         if os.path.exists(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5')):

@@ -46,7 +46,7 @@ class SimpleProfit(RewardScheme):
     def simpleProfit(self, action, current_price, new_state_price):
         print('IN simpleProfit action: %f, current_price : %f, new_state_price: %f' % (
             action, current_price, new_state_price))
-        reward = round(action * ((new_state_price - current_price)/current_price*100), 3)
+        reward = round(action * ((new_state_price - current_price)/current_price*1000), 3)
         if reward == -0.00:
             reward = 0
         return reward

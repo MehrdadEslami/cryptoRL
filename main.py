@@ -10,8 +10,9 @@ import numpy as np
 # from agents.DQN_agent import DQNAgent
 # from agents.SAC_agent import SACAgent
 # from agents.ActorCritic_agent import ActorCriticAgent
-from agents.MY_DQN_agent import MYDQNAgent
+# from agents.MY_DQN_agent import MYDQNAgent
 # from agents.LSTM_DQN_agent import LSTMDQNAgent
+from agents.AutoEncoder_DDQN_agent import AutoEncoderDDQNAgent
 
 with open("config.json", "r") as file:
     config = json.load(file)
@@ -52,21 +53,38 @@ def plot_training_logs(filename):
     plt.savefig('temp.png')
     print('done')
 
+def plot_loss(loss_list):
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(len(loss_list)), loss_list, color='blue', label='Loss')
+    plt.title('Loss Function of AutoEncoder')
+    plt.xlabel('step ')
+    plt.ylabel('Loss Value')
+    # plt.annotate()
+    plt.tight_layout()
+    print('Creating Plot.....')
+    plt.savefig('result/AutoEncoder/loss_exe_Q_16_5.png')
+    print('DONE')
+
+
 
 if __name__ == "__main__":
     # agent = ActorCriticAgent(config)
     # agent = DDPGAgent(config)
     # agent = DQNAgent(config)
-    agent = MYDQNAgent(config)
+    # agent = MYDQNAgent(config)
     # agent = LSTMDQNAgent(config)
-
+    agent = AutoEncoderDDQNAgent(config)
     print('After Creating Agent in Main')
 
 
     # Train
-    # agent.train(num_episodes=20)
+    # agent.train(num_episodes=1)
+    # loss_list = agent.train_encoder_decoder()
+    agent.train(num_episodes=10)
+    # plot_loss(loss_list)
+
     # plot_training_logs('result/temp.csv')
-    agent.test()
+    # agent.test()
 
     #test
     # agent.load_weights()

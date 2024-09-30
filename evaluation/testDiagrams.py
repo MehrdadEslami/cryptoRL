@@ -1,4 +1,5 @@
 import csv
+import datetime
 import random
 
 from influxdb_client import InfluxDBClient
@@ -10,6 +11,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import datetime as dt
+from datetime import timedelta
 
 # from agents.DQN_agent import DQNAgent
 # from agents.MY_DQN_agent import MYDQNAgent
@@ -90,7 +92,10 @@ class Query:
 
         d = {'_time': times, 'count': count}
         df = pd.DataFrame(d)
-        df.set_index('_time', inplace=True)
+        # df.set_index('_time', inplace=True)
+        print(df)
+        print(df.shape)
+        print(np.sum(df['count']))
         # change temp
         # df._set_value(20, 'count', 0.9)
 
@@ -162,7 +167,28 @@ class Query:
         # Plot the bar chart
         return df
 
-    def plot_count_ohlcv(self, df):
+    @staticmethod
+    def plot_count(df, label, c, filename):
+
+        plt.figure(figsize=(9, 3))
+        day = []
+        for i in range(len(df)):
+            day.append(df.iloc[i]['_time'].day)
+        plt.bar(day, df['count'], width=0.8, color=c, label=label)
+
+        plt.title("Number of Trades %s Per 24Hour" % label)
+        plt.xlabel('Time ')
+        plt.ylabel('Number of Trades')
+        # plt.annotate()
+        # plt.xticks(rotation=45)
+        plt.legend()
+        plt.tight_layout()
+        print('Creating Plot.....')
+        plt.savefig(filename)
+        print('DONE')
+
+    @staticmethod
+    def plot_count_ohlcv(df):
         plt.figure(figsize=(12, 6))
         df['count'].plot(kind='bar', width=0.3, color='blue', label='Number of Trades')
         df['price'].plot(linewidth=1.0, color='red', label='price')
@@ -176,23 +202,8 @@ class Query:
         plt.savefig('plots/_count_price_24h.png')
         print('DONE')
 
-    def plot_count(self, df, label, c, filename):
-
-        plt.figure(figsize=(9, 3))
-        plt.bar(range(len(df)), df['count'], width=0.8, color=c, label=label)
-
-        plt.title("Number of Trades %s Per 24Hour" % label)
-        plt.xlabel('Time ')
-        plt.ylabel('Number of Trades')
-        # plt.annotate()
-        # plt.xticks(rotation=45)
-        plt.legend()
-        plt.tight_layout()
-        print('Creating Plot.....')
-        plt.savefig(filename)
-        print('DONE')
-
-    def plot_from_csv(self, filename, x, y, xlabel, ylabel):
+    @staticmethod
+    def plot_from_csv(filename, x, y, xlabel, ylabel):
         # Read data from CSV
         data = pd.read_csv(filename)
         data['Reward'] *= 500
@@ -219,7 +230,7 @@ class Query:
         plt.savefig('result/reward-MY4.png')
         print('done')
 
-    def price_action(self, filename):
+    def price_action(self, action_filename, filename_date):
         query = f'''
                    from(bucket: "{bucket_ohlcv}")
                      |> range(start: {self.start_time}, stop: {self.stop_time})
@@ -229,7 +240,6 @@ class Query:
                      |> aggregateWindow(every: {self.window}, fn: mean, createEmpty: false) // Count trades every hour
                      |> yield(name: "mean")
                    '''
-        # print(query2)
         tables_price = query_api.query(query)
         client.close()
 
@@ -258,7 +268,7 @@ class Query:
         plt.plot(times, price, color='white', label='price')
 
         # read csv file
-        data = pd.read_csv(filename)
+        data = pd.read_csv(action_filename)
         num = 1
         for action, action_time, action_price in zip(data['action'], data['action_time'], data['action_price']):
             print('action in for', action)
@@ -288,174 +298,175 @@ class Query:
         plt.tight_layout()
         # Show the plot
         print('Creating plot ....')
-        plt.savefig('result/article/test_my_dqn_%s_%s.png' % (config['slice_size'], self.symbol))
+
+        plt.savefig('result/article/test_my_dqn_%s_%s_%s.png' % (config['slice_size'], self.symbol, filename_date))
         print('save done')
         return j
 
-    def price_action_plot_from_csv(self):
-        # Read data from CSV
-        filename_ohlcv = 'result/test_close_%s.csv' % self.symbol
-        filename_action = 'result/test_action_%s_e.csv' % self.symbol
 
-        data_ohlcv = pd.read_csv(filename_ohlcv)
+class Evaluation:
+    def __init__(self, local_config):
+        self.symbol = local_config['symbol']
+        self.USDT_balance = local_config['USDT_balance']
+        self.ETH_balance = local_config['symbol_balance']
+        self.action_df = pd.read_csv('result/article/test_action_%s_%s.csv' % (config['slice_size'], self.symbol))
+        self.close_df = pd.read_csv('result/article/test_close_%s.csv' % self.symbol)
 
-        plt.style.use('dark_background')
+        # Convert action_time to datetime format
+        self.action_df['action_time'] = pd.to_datetime(self.action_df['action_time'])
+        self.close_df['times'] = pd.to_datetime(self.close_df['times'])
+        self.minutes = local_config['minutes']
+        self.hours = local_config['hours']
+        # Store portfolio values and rewards
+        self.portfolio_values = []
+        self.rewards = []
+        self.initial_portfolio_value = self.USDT_balance
 
-        # Create the plot
-        plt.figure(figsize=(10, 6))
-
-        plt.plot(data_ohlcv['times'], data_ohlcv['close'], label='price %s'%self.symbol, color = 'white')
-
-        # Set labels
-        plt.xlabel('time')
-        plt.ylabel('price')
-        plt.title('Price Diagram with Sell/Buy actions (triangles) %s'%self.symbol)
-        data = pd.read_csv(filename_action)
-        num = 1
-        for action, action_time, action_price in zip(data['action'], data['action_time'], data['action_price']):
-            if action_price == 0: continue
-            if action < 2:
-                plt.scatter(action_time, action_price, color='red', marker='v', s=100, label=f'{num}')
-            elif action > 2:
-                plt.scatter(action_time, action_price, color='green', marker='^', s=100, label=f'{num}')
-            elif action == 2:
-                plt.scatter(action_time, action_price, color='yellow', marker='+', s=100,
-                            label=f'{num}')
-            # plt.annotate(str(num), xy=(action_time, action_price-100))
-            num += 1
-        # Show the plot
-        print('Creating plot -----')
-        plt.savefig('result/test_action_%s_e.png'%self.symbol)
-        print('done')
+    # Helper function to get the close price 2 hours after the action time
+    def get_close_price_later(self, action_time):
+        close_time = action_time + timedelta(minutes=self.minutes, hours=self.hours)
+        nearest_close = self.close_df[self.close_df['times'] >= close_time]
+        if nearest_close.empty:
+            return self.close_df.iloc[-1]['close']
+        else:
+            return nearest_close.iloc[0]['close']
 
 
-# i, j = query_trades_count()
-# agent = DQNAgent(config)
-# agent.test()
-#
-# query = f'''
-#             from(bucket: "tradeBucket")
-#               |> range(start: {start_time}, stop: {stop_time})
-#               |> filter(fn: (r) => r["_measurement"] == "trades")
-#               |> filter(fn: (r) => r["_field"] == "quantity") // Use the trade ID field for counting trades
-#               |> filter(fn: (r) => r["symbol"] == "BTCUSDT")
-#               |> aggregateWindow(every: 4h, fn: sum, createEmpty: false) // Count trades every hour
-#               |> yield(name: "sum")
-#             '''
-# tables_price = query_api.query(query)
-# client.close()
-#
-# i = 0
-# for table in tables_price:
-#     for record in table:
-#         t = pd.to_datetime(record['_time'])
-#         times.append(t)
-#         # index.append(i)
-# #         i += 1
-#         quantity.append(record['_value'])
-# # timestamps = pd.date_range(start='2024-07-21', end='2024-08-21', freq='5T')
-# d = {'_time': times, 'quantity': quantity}
-# df2 = pd.DataFrame(d)
-# df2['_time'] = pd.to_datetime(df2['_time'])
-# # Set the time as the index for plotting
-# # df.set_index('index', inplace=True)
-#
-# # print('\ntime', times)
-# # print('price', price)
-# print('time len', len(times))
-# print('quantity len', len(quantity))
-# print('df len', len(df2))
+    def evaluate(self):
+        # Loop through each action and calculate portfolio value, reward
+        last_action = 'hold'
+        for index, row in self.action_df.iterrows():
+            action = row['action']
+            action_time = row['action_time']
+            action_price = row['action_price']
+
+            # Get the close price 2 hours after the action
+            close_price_after = self.get_close_price_later(action_time)
+
+            # Calculate portfolio based on action space
+            if action == 0 or action == 1:  # Sell 75% of ETH
+                if last_action == 'buy' or last_action == 'hold':
+                    self.USDT_balance += (self.ETH_balance * 1) * action_price
+                    self.ETH_balance -= self.ETH_balance * 1
+                    last_action = 'sell'
+                elif last_action == 'sell':
+                    last_action = 'hold'
+
+            elif action == 3 or action == 4:  # Sell 25% of ETH
+                if last_action == 'sell' or last_action == 'hold':
+                    amount_to_buy = (self.USDT_balance * 1) / action_price
+                    self.ETH_balance += amount_to_buy
+                    self.USDT_balance -= self.USDT_balance * 1
+                    last_action = 'buy'
+                elif last_action == 'buy':
+                    last_action = 'hold'
+            else:
+                last_action = 'hold'
 
 
-# Add random triangles at 12-hour intervals
-# for action_time, action in zip(agent.test_action_time, agent.test_action):
-#     # Find the closest price point for the action_time
-#     closest_time_idx = df['_time'].sub(action_time).abs().idxmin()
-#     closest_price = df.loc[closest_time_idx, 'price']
-#
-#     # Determine the color and orientation of the triangle based on the action
-#     if action == 0:
-#         color = 'red'
-#         marker = 'v'  # Upward triangle
-#         size = 200
-#     elif action == 1:
-#         color = 'blue'
-#         marker = '+'  # Upward triangle
-#         size = 50
-#     elif action == 2:
-#         color = 'green'
-#         marker = '^'  # Downward triangle
-#         size = 200
-#     elif action == 3:
-#         color = 'green'
-#         marker = '^'  # Downward triangle
-#         size = 100
-#     elif action == 4:
-#         color = 'green'
-#         marker = '^'  # Downward triangle
-#         size = 300
-#     else:
-#         continue  # Skip actions that are not 0, 1, 3, or 4
-#
-#     # Plot the triangle
-#     plt.scatter(action_time, closest_price-1000, color=color, marker=marker, s=size, label=f'Action {action}')
+            # Calculate current portfolio value
+            current_portfolio_value = (self.ETH_balance * close_price_after) + self.USDT_balance
+            self.portfolio_values.append(current_portfolio_value)
 
-# READ SCV FILE
-# csv_file = f'dataset/BTCUSDT_ohlcv.csv'
-# df = pd.read_csv(csv_file)
-# #
-# # # Ensure 'time' is in datetime format
-# df['time'] = pd.to_datetime(df['time'])
-# volume = []
-# vtime  = []
-# j = 1
-# vsum = 0
-# for i in df.iterrows():
-#     vsum += i[1]['volume']
-#     if j%8 == 0:
-#         volume.append(vsum)
-#         vtime.append(vtime)
-#         vsum = 0
-#     j += 1
-# d = {'time': vtime, 'volume': volume}
-# df_csv = pd.DataFrame(d)
-# #
-# # # Plot the price line
-# # plt.figure(figsize=(20, 12), facecolor='#6857f5' )
-# # # # df.sort_values(by=['_time'])
-# # # ax = plt.axes()
-# # # ax.set_facecolor('#6857f5')
-# # # df2['quantity'].plot(kind='bar', label='quantity', color='white')
-# #
-# # # df['time'] = pd.to_datetime(df['time'])
-# # plt.plot(vtime, volume, kind='bar', label='quantity', color='green')
-# df_csv['volume'].plot(kind='bar', label='quantity', color='blue')
-# # Customize the plot
-# plt.title('Price Diagram with Buy/Sell Actions (Triangles)')
-# plt.xlabel('Time')
-# plt.ylabel('Price')
-# # plt.legend(loc='best')
-# plt.xticks(rotation=45)
-# # plt.tight_layout()
-#
-# plt.savefig('plots/volume_quantity_csv.png')
+            # Calculate reward as the difference between current and previous portfolio value
+            if index == 0:
+                reward = current_portfolio_value - self.initial_portfolio_value
+            else:
+                reward = current_portfolio_value - self.portfolio_values[-2]
+            self.rewards.append(reward)
 
-local_config = {
-    'start': dt.datetime.fromisoformat('2024-07-20T00:00:00'),
-    'end': dt.datetime.fromisoformat('2024-09-12T00:00:00'),
+    # Calculate Sharpe Ratio
+    def sharp_ratio(self):
+        returns = np.diff(self.portfolio_values) / self.portfolio_values[:-1]
+        sharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(len(returns))
+        return returns
+
+    def Max_Drawdown(self):
+        # Calculate Maximum Drawdown
+        cumulative_returns = np.array(self.portfolio_values) / self.initial_portfolio_value
+        running_max = np.maximum.accumulate(cumulative_returns)
+        draw_down = (running_max - cumulative_returns) / running_max
+        max_draw_down = np.max(draw_down)
+        return max_draw_down
+
+    def plot_reward(self):
+        # Plot reward
+        plt.plot(self.rewards)
+        plt.title('Rewards after each action')
+        plt.xlabel('Action number')
+        plt.ylabel('Reward')
+        plt.grid(True)
+        print('Creating Plot')
+        plt.savefig('result/article/reward_%s.png'%self.symbol)
+        print('Plot Done')
+
+        # Print key metrics
+        SR = self.sharp_ratio()
+        MDD = self.Max_Drawdown()
+        print(f"Sharpe Ratio: {SR}")
+        print(f"Maximum Drawdown: {MDD}")
+        print(f"Max Reward: {np.max(self.rewards)}")
+        print(f"Min Reward: {np.min(self.rewards)}")
+        print(f"var Reward: {np.var(self.rewards)}")
+        print(f"Average Reward: {np.mean(self.rewards)}")
+        print(f"sum Reward: {np.sum(self.rewards)}")
+
+    def plot_sharp_ratio(self):
+        # Assuming you have a list of Sharpe ratios over time
+        sharpe_ratios = self.sharp_ratio()
+
+        # Plotting the Sharpe Ratio over time
+        plt.plot(sharpe_ratios)
+        plt.title('Sharpe Ratio Over Time')
+        plt.xlabel('Trade/Interval')
+        plt.ylabel('Sharpe Ratio')
+        plt.savefig('result/article/sharoRatio_%s.png'%self.symbol)
+
+        # Calculate mean Sharpe Ratio
+        mean_sharpe_ratio = np.mean(sharpe_ratios)
+        print(f"Mean Sharpe Ratio: {mean_sharpe_ratio:.2f}")
+
+    def Base_model(self):
+        # Extract start and end prices from the close_df
+        start_price = self.close_df.iloc[0]['close']
+        end_price = self.close_df.iloc[-1]['close']
+        initial_balance = 1000
+
+        buy_and_hold_profit = (end_price / start_price - 1) * initial_balance
+        print(f"Buy and Hold Profit: {buy_and_hold_profit:.2f} USDT")
+        sell_and_hold_profit = (1 - end_price / start_price) * initial_balance
+        print(f"Sell and Hold Profit: {sell_and_hold_profit:.2f} USDT")
+
+class_config = {
+    'start': dt.datetime.fromisoformat('2024-07-10T00:00:00'),
+    'end': dt.datetime.fromisoformat('2024-09-23T00:00:00'),
     'symbol': config['symbol'],
-    'window': '30m'
+    'window': '1h',
+    'USDT_balance': 1000,
+    'symbol_balance': 0,
+    'minutes': 15,
+    'hours': 0
 }
-q = Query(local_config)
-# df = q.query_trades_count()
+q = Query(class_config)
+df = q.query_trades_count()
+print(len(df))
 
-# q.symbol = 'BTCUSDT'
 # df = q.query_trades_count()
-# q.plot_count(df, 'BTCUSDT', 'red', 'plots/_trades_count_BU_24h.png')
+# q.plot_count(df, 'BTCUSDT', 'blue', 'result/article/trades_count_BU_24h.png')
 
 # q.plot_from_csv('result/training_logs_MY_dqn_4channel_16_2.csv', 'Episode', 'reward3', 'Epoch', 'Reward')
 # agent = MYDQNAgent(config)
 # print('After Creating Agent in Main')
 # agent.test()
-q.price_action('result/article/test_action_%s_%s.csv' % (config['slice_size'], q.symbol))
-# q.price_action_plot_from_csv()
+# d = datetime.datetime.fromisoformat(agent.env.observer.last_trade_time)
+# filename_date = '%s:%s:%s-%s:%s' % (d.year, d.month, d.day, d.hour, d.minute)
+# filename_date = '%s:%s:%s-%s:%s' % (2024, 9, 22, 16, 43)
+# q.price_action(action_filename='result/article/test_action_%s_%s.csv' % (config['slice_size'], q.symbol),
+#                filename_date=filename_date)
+
+#EVALUATING
+# e = Evaluation(class_config)
+# e.evaluate()
+# e.plot_reward()
+# e.plot_sharp_ratio()
+# e.Base_model()

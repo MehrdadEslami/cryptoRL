@@ -35,10 +35,10 @@ class BSH(ActionScheme):
         super().__init__()
         self.trading_pair = 'BTC/USDT'
         self._action_space = Discrete(5)
-        self.actions = [-0.75, -0.25, 0, 0.25, 0.75]
-        # self.actions = [-1, 0, 1]
+        # self.actions = [-0.75, -0.25, 0, 0.25, 0.75]
+        self.actions = [-1, 0, 1]
         # self._action_space = Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
-        self.action_n = 5
+        self.action_n = 3
         print('Action Space Created')
 
     @property
@@ -51,22 +51,22 @@ class BSH(ActionScheme):
         print('Here In Action Perform')
         print('action: %f, usdt_balance: %f, btc_balance: %f, current_price:%f' % (
         action, usdt_balance, btc_balance, current_price))
-        if action < 0:
+        if action == -1:
             # Sell action
             btc_to_sell = abs(action * btc_balance)
             print('btc to sell', btc_to_sell)
-            if btc_balance <= 0:
+            if btc_to_sell == 0:
                 print('no BTC to SELL')
             else:
                 revenue = btc_to_sell * current_price
                 btc_balance -= btc_to_sell
                 usdt_balance += revenue
                 print(f"Sold {btc_to_sell:.6f} BTC for {revenue:.2f} USDT")
-        elif action > 0:
+        elif action == 1:
             # Buy action
             usdt_to_spend = action * usdt_balance
             print('usdt_to_spend', usdt_to_spend)
-            if usdt_balance < usdt_to_spend:
+            if usdt_to_spend == 0:
                 print('Not enough balance to buy. USDT balance is', usdt_balance)
                 print('USDT to spend is', usdt_to_spend)
             else:
@@ -76,7 +76,7 @@ class BSH(ActionScheme):
                 print(f"Bought {btc_to_buy:.6f} BTC for {usdt_to_spend:.2f} USDT")
                 print("New USDT balance:", usdt_balance)
                 print("New BTC balance:", btc_balance)
-        else:
+        elif action == 0:
             print("No action taken")
 
         return usdt_balance, btc_balance

@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import datetime as dt
 # InfluxDB details
-with open("config.json", "r") as file:
+with open("../config.json", "r") as file:
     config = json.load(file)
 
 influxdb_config = config['influxdb']

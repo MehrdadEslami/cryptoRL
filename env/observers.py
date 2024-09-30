@@ -113,7 +113,7 @@ class ObserverM(Observer):
         else:
             last_trade = self.trades.iloc[self.next_image_i + self.buffer_size**2]
 
-        trade_time = last_trade['time']
+        trade_time = self.trades.iloc[self.next_image_i]['time']
         if trade_time.minute < 15:
             start = trade_time - dt.timedelta(minutes=30)
         else:
