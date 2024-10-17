@@ -15,8 +15,9 @@ from datetime import timedelta
 
 # from agents.DQN_agent import DQNAgent
 # from agents.MY_DQN_agent import MYDQNAgent
+from agents.AutoEncoder_DDQN_agent import AutoEncoderDDQNAgent
 
-with open("config.json", "r") as file:
+with open("../config.json", "r") as file:
     config = json.load(file)
 
 influxdb_config = config['influxdb']
@@ -251,15 +252,15 @@ class Query:
                 price.append(record['_value'])
         # Save logs to file
         print('# Save ohlcv to file')
-        with open('result/article/test_close_%s.csv' % self.symbol, 'w', newline='') as file:
+        with open('../result/AutoEncoder/test_close_%s.csv' % self.symbol, 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['times', 'close'])
-            for i in range(len(times)):
+            for i in range(len(price)):
                 writer.writerow((times[i], price[i]))
 
         plt.figure(figsize=(12, 6))
         plt.style.use('dark_background')
-
+        # plt.style.use('fivethirtyeight')
         # Customize the plot
         plt.title('Price Diagram with Buy/Sell Actions (Triangles) %s'%self.symbol)
         plt.xlabel('Time')
@@ -273,17 +274,21 @@ class Query:
         for action, action_time, action_price in zip(data['action'], data['action_time'], data['action_price']):
             print('action in for', action)
             print('action in for', action_time)
-            if action_price == 0: continue
+            if action_price == 0:
+                continue
             if action == 0:
                 plt.scatter(pd.to_datetime(action_time), action_price, color='red', marker='v', s=100, label=f'{num}')
             elif action == 1:
-                plt.scatter(pd.to_datetime(action_time), action_price, color='red', marker='v', s=100, label=f'{num}')
+                plt.scatter(pd.to_datetime(action_time), action_price, color='yellow', marker='*', s=100,
+                            label=f'{num}')
+                # plt.scatter(pd.to_datetime(action_time), action_price, color='red', marker='v', s=100, label=f'{num}')
             elif action == 3:
                 plt.scatter(pd.to_datetime(action_time), action_price, color='green', marker='^', s=100, label=f'{num}')
             if action == 4:
                 plt.scatter(pd.to_datetime(action_time), action_price, color='green', marker='^', s=100, label=f'{num}')
             elif action == 2:
-                plt.scatter(pd.to_datetime(action_time), action_price, color='yellow', marker='*', s=100, label=f'{num}')
+                plt.scatter(pd.to_datetime(action_time), action_price, color='green', marker='^', s=100, label=f'{num}')
+
             # plt.annotate(str(num), xy=(action_time, action_price-100))
             num += 1
             # # Find the closest price point for the action_time
@@ -299,7 +304,7 @@ class Query:
         # Show the plot
         print('Creating plot ....')
 
-        plt.savefig('result/article/test_my_dqn_%s_%s_%s.png' % (config['slice_size'], self.symbol, filename_date))
+        plt.savefig('../result/AutoEncoder/test_my_dqn_%s_%s_%s.png' % (config['slice_size'], self.symbol, filename_date))
         print('save done')
         return j
 
@@ -439,7 +444,7 @@ class Evaluation:
 
 class_config = {
     'start': dt.datetime.fromisoformat('2024-07-10T00:00:00'),
-    'end': dt.datetime.fromisoformat('2024-09-23T00:00:00'),
+    'end': dt.datetime.fromisoformat('2024-10-04T00:00:00'),
     'symbol': config['symbol'],
     'window': '1h',
     'USDT_balance': 1000,
@@ -448,21 +453,22 @@ class_config = {
     'hours': 0
 }
 q = Query(class_config)
-df = q.query_trades_count()
-print(len(df))
+# df = q.query_trades_count()
+# print(len(df))
 
 # df = q.query_trades_count()
 # q.plot_count(df, 'BTCUSDT', 'blue', 'result/article/trades_count_BU_24h.png')
 
 # q.plot_from_csv('result/training_logs_MY_dqn_4channel_16_2.csv', 'Episode', 'reward3', 'Epoch', 'Reward')
 # agent = MYDQNAgent(config)
-# print('After Creating Agent in Main')
-# agent.test()
-# d = datetime.datetime.fromisoformat(agent.env.observer.last_trade_time)
-# filename_date = '%s:%s:%s-%s:%s' % (d.year, d.month, d.day, d.hour, d.minute)
-# filename_date = '%s:%s:%s-%s:%s' % (2024, 9, 22, 16, 43)
-# q.price_action(action_filename='result/article/test_action_%s_%s.csv' % (config['slice_size'], q.symbol),
-#                filename_date=filename_date)
+agent = AutoEncoderDDQNAgent(config)
+print('After Creating Agent in Main')
+agent.test()
+d = datetime.datetime.fromisoformat(agent.env.observer.last_trade_time)
+filename_date = '%s-%s-%sT%s:%s' % (d.year, d.month, d.day, d.hour, d.minute)
+# filename_date = '%s-%s-%sT%s:%s' % (2024, 10, 4, 14, 19)
+q.price_action(action_filename='../result/AutoEncoder/test_action_%s_%s_%s.csv' % (config['slice_size'], q.symbol, filename_date),
+               filename_date=filename_date)
 
 #EVALUATING
 # e = Evaluation(class_config)

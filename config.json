@@ -27,7 +27,7 @@
   },
   "symbol":"BTCUSDT",
   "buffer_size": "32",
-  "slice_size": "256",
+  "slice_size": "128",
   "encoded_size" : "512",
   "batch_size" : "16",
   "ESRI" : "16",

@@ -75,13 +75,14 @@ if __name__ == "__main__":
     # agent = LSTMDQNAgent(config)
     agent = AutoEncoderDDQNAgent(config)
     print('After Creating Agent in Main')
+    filename = './model_weights/AutoEncoder/New_MY_EDDQN_32_512_2.h5'
+    agent.load_weights(filename)
 
 
     # Train
-    # agent.train(num_episodes=1)
+    agent.train(num_episodes=20)
     # loss_list = agent.train_encoder_decoder()
-    agent.train(num_episodes=10)
-    # plot_loss(loss_list)
+    # agent.train(num_episodes=15)
 
     # plot_training_logs('result/temp.csv')
     # agent.test()
