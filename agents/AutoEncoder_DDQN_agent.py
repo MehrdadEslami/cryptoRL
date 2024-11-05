@@ -1,16 +1,15 @@
 import csv
 import math
 import os
-import pandas as pd
+# import pandas as pd
 
 import numpy as np
 from keras.applications import VGG16
-from keras.models import Model, Sequential
-from keras.layers import Dense, Flatten, Dropout, ZeroPadding2D, Convolution2D, MaxPooling2D, Input, concatenate, \
+from keras.models import Model
+from keras.layers import Dense, Flatten, ZeroPadding2D, Convolution2D, MaxPooling2D, Input, \
     Reshape
 from keras.optimizers import Adam
 from tensorflow.keras import backend as K
-import tensorflow as tf
 import random
 from env.environment import TradingEnv
 import datetime as dt
@@ -19,28 +18,33 @@ import datetime as dt
 class AutoEncoderDDQNAgent:
     def __init__(self, config):
 
+        self.q_value_loss_ED = None
+        self.reconstruction_loss_ED = None
         self.env = TradingEnv(trading_pair='BTC/USD', config=config)
         self.observation_shape = self.env.observation_space.shape
+        self.env.action_scheme.actions = [-1, 0, 1]
+        self.env.action_scheme.action_n = 3
         self.buffer_size = int(config['buffer_size'])
         self.batch_size = int(config['batch_size'])
         self.encoded_size = int(config['encoded_size'])
         self.ESRI = int(config['ESRI'])  # Encoded state Reshape Index
         self.model_path = config['model_weights_path']
+        self.model_name = config['model_name']
 
         self.q_values = None
         self.target_values = None
         self.encoded_state = None
         self.max_reward_next_state = None
         self.mean_reward_states = None
-        self.max_mean_reward = 0
-        self.mean_max_reward = 0
+        self.max_mean_reward = 0.0645335611618624
+        self.mean_max_reward = 20.906207949564017
 
         self.current_action = None
         self.memory = []
-        self.gamma = 0.9
-        self.lambda_ = 0.9
-        self.epsilon = 0.9
-        self.epsilon_decay = 0.02
+        self.gamma = 0.7182
+        self.lambda_ = 0.5174
+        self.epsilon = 0.99
+        self.epsilon_decay = 0.01
         self.epsilon_min = 0.01
         self.learning_rate = 0.01
         self.optimizer = Adam(lr=self.learning_rate)
@@ -57,10 +61,11 @@ class AutoEncoderDDQNAgent:
         self.encoder_decoder = self._build_encoder_decoder()
         # self.q_network_pretrain = self._build_q_network()
         self.q_network = self.build_q_network()
-        self.model = self.build_model()
         # Target network
         self.target_q_network = self.build_q_network()
-        self.load_weights(os.path.join(self.model_path, 'AutoEncoder/New_MY_EDDQN_32_512_3.h5'))
+        self.model = self.build_model()
+        self.load_weights()
+        # self.update_target_network()
 
     def _build_encoder_decoder(self):
         input_shape = (self.buffer_size, self.buffer_size, 4)
@@ -156,7 +161,7 @@ class AutoEncoderDDQNAgent:
 
     def custom_loss(self, y_true, y_pred):
         print('in custome loss')
-        reconstruction_loss = K.mean(K.square(y_pred - y_true), axis=-1)
+        self.reconstruction_loss_ED = K.mean(K.square(y_pred - y_true), axis=-1)
 
         # target = self.max_reward_next_state + self.gamma * np.max(self.target_values, axis=1)
         # target = self.max_mean_reward
@@ -164,9 +169,10 @@ class AutoEncoderDDQNAgent:
         # target = (self.gamma * (self.beta * self.max_reward_next_state + (1 - self.beta) * np.max(self.target_values, axis=1)))-np.max(self.q_values, axis=1)
         # print('target:', target.shape)
         # print('target:', target)
-        q_value_loss = K.mean(K.square(target - np.max(self.q_values, axis=1)))
+        self.q_value_loss_ED = K.mean(K.square(target - np.max(self.q_values, axis=1)))
         # temp = tf.convert_to_tensor(q_value_loss)
-        return (1 - self.lambda_) * reconstruction_loss + self.lambda_ * q_value_loss
+        return (1 - self.lambda_) * self.reconstruction_loss_ED + self.lambda_ * self.q_value_loss_ED
+        # return self.reconstruction_loss_ED
 
     def custom_mse_loss(self, y_true, y_pred):
         return K.mean(K.square(y_pred - y_true), axis=-1)
@@ -204,14 +210,10 @@ class AutoEncoderDDQNAgent:
         print('q_values shape after model predict', q_values.shape)
         action = np.argmax(q_values[0])
         return action
-        if self.current_action == action:
-            print('in if action: 1')
-            return np.array(1)
-        print('out if action', action)
-        return action
-
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
+        # if self.current_action == action:
+        #     action = 1
+        # self.current_action = action
+        # return action
 
     def calculate_max_mean_reward(self, next_state_i):
         best_trade_index = None
@@ -239,7 +241,7 @@ class AutoEncoderDDQNAgent:
         for j, trade in trades.iterrows():
             quantity_norm = (trade['quantity'] - self.env.observer.min_all_qty) \
                             / (self.env.observer.max_all_qty - self.env.observer.min_all_qty)
-            reward = quantity_norm * ((ohlcv['close'] - trade['price']) / trade['price'] * 100)
+            reward = 1 * ((ohlcv['close'] - trade['price']) / trade['price'] * 100)
             if reward < 0 and trade['side'] == 'sell':
                 reward *= -1
             sum_reward += reward
@@ -252,7 +254,7 @@ class AutoEncoderDDQNAgent:
             index += 1
         # print('max reward in current state',max_reward)
         # return sum_reward / (self.buffer_size * self.buffer_size)  # max_reward['reward']
-        return max_reward['reward'], sum_reward/(self.buffer_size * self.buffer_size)
+        return max_reward['reward'], sum_reward / (self.buffer_size * self.buffer_size)
 
     def train_encoder_decoder(self):
         if len(self.memory) < self.batch_size:
@@ -262,7 +264,7 @@ class AutoEncoderDDQNAgent:
 
         states_list = []
         next_states_list = []
-        for state, action, reward, next_state, done, next_state_i in minibatch:
+        for state, action, reward, next_state, done, max_reward, next_state_i in minibatch:
             states_list.append(state)
             next_states_list.append(next_state)
 
@@ -288,7 +290,7 @@ class AutoEncoderDDQNAgent:
         actions_list = []
         next_states_list = []
         target_q_values = []
-        for state, action, reward, next_state, done, next_state_i in minibatch:
+        for state, action, reward, next_state, done, max_reward, next_state_i in minibatch:
             states_list.append(state)
             next_states_list.append(next_state)
             rewards_list.append(reward)
@@ -301,8 +303,9 @@ class AutoEncoderDDQNAgent:
         next_encoded_output = self.encoder(next_state_batch)
         self.target_values = self.target_q_network(next_encoded_output)
         print('GO to train Q_network')
-        # target_q_values = rewards_list + self.gamma * (self.beta * self.max_reward_next_state + (1 - self.beta) * np.max(self.target_values))
-        target_q_values = rewards_list + np.multiply(self.gamma, [float(self.target_values[w][actions_list[w]]) for w in range(self.batch_size)])
+        target_q_values = rewards_list + self.gamma * np.max(self.target_values)
+        # target_q_values = rewards_list + np.multiply(self.gamma, [float(self.target_values[w][actions_list[w]]) for w in
+        #                                                           range(self.batch_size)])
 
         target_q_values = np.array(target_q_values)
         print('target_q_values shape', target_q_values.shape)
@@ -321,25 +324,23 @@ class AutoEncoderDDQNAgent:
 
         states_list = []
         rewards_list = []
-        for state, action, reward, next_state, done, next_state_i in minibatch:
+        max_rewards_list = []
+        for state, action, reward, next_state, done, max_reward, next_state_i in minibatch:
             states_list.append(state)
             rewards_list.append(reward)
-
+            max_rewards_list.append(max_reward)
         state_batch = np.array(states_list)
         encoded_output = self.encoder(state_batch)  # This processes y_true through the encoder
         self.target_values = self.target_q_network(encoded_output)
         print('GO to train Target_Q_network')
-        target_q_values = np.multiply(1-self.gamma, rewards_list) + self.gamma * self.mean_max_reward
+        target_q_values = max_rewards_list + self.gamma * self.mean_max_reward
 
         target_q_values = np.array(target_q_values)
-        loss = self.q_network.train_on_batch(encoded_output, target_q_values)
+        loss = self.target_q_network.train_on_batch(encoded_output, target_q_values)
 
         return loss
 
     def train(self, num_episodes=1, T_start=100, T_end=1, anneal_rate=0.9):
-        rewards_log = []
-        q_loss_log = []
-        ed_loss_log = []
         best_gamma = self.gamma
         best_lambda_ = self.lambda_
         temperature = T_start
@@ -350,12 +351,16 @@ class AutoEncoderDDQNAgent:
             self.btc_balance = 0
             state, _ = self.env.reset()
             episode_reward = 0
+
             ED_loss = []
             Q_loss = []
+            Q_loss_EncoderDecoder = []
+            reconstruction_loss_ED = []
+            Target_loss = []
+            target_loss = 0
             states_reward = []
             self.memory = []
             done = False
-
 
             while not done:
                 print('*******************************start while iteration:%d' % (episode))
@@ -368,10 +373,12 @@ class AutoEncoderDDQNAgent:
 
                 episode_reward += reward
                 states_reward.append(reward)
-                self.memory.append((state, action, reward, next_state, done, next_state_i))
-                state = next_state
                 self.max_reward_next_state, self.mean_reward_states = self.calculate_max_mean_reward(next_state_i)
-                self.mean_max_reward = self.lambda_ * self.max_reward_next_state + (1 - self.lambda_) * self.mean_max_reward
+                self.memory.append((state, action, reward, next_state, done, self.max_reward_next_state, next_state_i))
+                state = next_state
+
+                self.mean_max_reward = self.lambda_ * self.max_reward_next_state + (
+                            1 - self.lambda_) * self.mean_max_reward
                 if self.max_mean_reward < self.mean_reward_states:
                     self.max_mean_reward = self.mean_reward_states
 
@@ -380,17 +387,21 @@ class AutoEncoderDDQNAgent:
                 ed_loss = self.train_encoder_decoder()
                 edq_loss = self.train_Q_Network()
                 # ed_loss = edq_loss
-                if ed_loss != None:
+                if ed_loss is not None:
                     ED_loss.append(ed_loss)
-                if edq_loss != None:
+                if edq_loss is not None:
                     Q_loss.append(edq_loss)
+                    reconstruction_loss_ED.append(self.reconstruction_loss_ED)
+                    Q_loss_EncoderDecoder.append(self.q_value_loss_ED)
 
-                if self.env.step_count % 10 == 0:
-                    self.train_Target_Q_Network()
+                if self.env.step_count % 20 == 0:
+                    target_loss = self.train_Target_Q_Network()
+                    Target_loss.append(target_loss)
+                    # self.update_target_network()
                     self.save_weights()
 
                 print(
-                    f"Episode: {episode}, Action: {action}, Reward: {reward}, Q_loss: {edq_loss}, Re_loss: {ed_loss}")
+                    f"Episode: {episode}, Action: {action}, Reward: {reward}, Q_main_loss: {edq_loss}, Target_Q_loss : {target_loss}, ED_loss: {ed_loss}, Q_loss_ED: {self.q_value_loss_ED}, Re_loss: {self.reconstruction_loss_ED}")
 
             # Simulated annealing step
             new_gamma, new_lambda = self.simulated_annealing()
@@ -410,40 +421,34 @@ class AutoEncoderDDQNAgent:
 
             # Decrease temperature
             temperature = max(T_end, temperature * anneal_rate)
-
-
-            q_loss_log.append(np.mean(Q_loss))
-            ed_loss_log.append(np.mean(ED_loss))
-            rewards_log.append(episode_reward)
             print(
                 f"Episode: {episode + 1}, Reward: {episode_reward}, Q_loss: {edq_loss}, ED_loss: {ed_loss}, Best Loss: {self.best_loss}")
 
             print(f"Best parameters - Gamma: {best_gamma}, Lambda: {best_lambda}")
 
-            filename = 'result/AutoEncoder/EDDQN_while_32_1.csv'
+            filename = 'result/%s/temp_state.csv'%self.model_name
             file_exit = False
             if os.path.exists(filename):
                 file_exit = True
             with open(filename, 'a', newline='') as file:
                 writer = csv.writer(file)
                 if not file_exit:
-                    writer.writerow(['episode', 'Reward', 'Q_loss', 'ED_Loss'])
+                    writer.writerow(['episode', 'Reward', 'Q_loss', 'ED_loss', 'Q_ED_loss', 'RE_loss'])
                 for i in range(len(Q_loss)):
-                    writer.writerow([episode, states_reward[i],
-                                     Q_loss[i], ED_loss[i]])
+                    writer.writerow( [episode, states_reward[i], Q_loss[i], ED_loss[i],
+                                      Q_loss_EncoderDecoder[i], reconstruction_loss_ED[i]])
 
-
-        # Save logs to file
-        print('# Save logs to file')
-        file_exit = False
-        if os.path.exists('result/AutoEncoder/EDDQN_32_episode_1.csv'):
-            file_exit = True
-        with open('result/AutoEncoder/EDDQN_32_episode_1.csv', 'a', newline='') as file:
-            writer = csv.writer(file)
-            if not file_exit:
-                writer.writerow(['Episode', 'Reward', 'Q_Loss', 'ED_loss'])
-            for i in range(num_episodes):
-                writer.writerow([i + 1, rewards_log[i], q_loss_log[i], ed_loss_log[i]])
+            # Save logs to file
+            print('# Save logs to file')
+            file_exit = False
+            if os.path.exists('result/%s/temp_episode.csv'%self.model_name):
+                file_exit = True
+            with open('result/%s/temp_episode.csv'%self.model_name, 'a', newline='') as file:
+                writer = csv.writer(file)
+                if not file_exit:
+                    writer.writerow(['Episode', 'Reward', 'Q_Loss', 'ED_Loss', 'Target_Loss'])
+                writer.writerow([episode, np.mean(states_reward), np.mean(Q_loss), np.mean(ED_loss),
+                                 np.mean(target_loss)])
 
     def test(self):
         self.usdt_balance = 1000
@@ -457,7 +462,9 @@ class AutoEncoderDDQNAgent:
             print('*******************************start while')
 
             action = self.decision(state)
-
+            if self.current_action == action:
+                action == 1
+            self.current_action = action
             print('action is', action)
             if self.env.observer.next_image_i < len(self.env.observer.trades):
                 action_time = self.env.observer.trades['time'].iloc[self.env.observer.next_image_i]
@@ -465,7 +472,7 @@ class AutoEncoderDDQNAgent:
             next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance, _ = self.env.step(
                 action, self.usdt_balance,
                 self.btc_balance)
-            self.memory.append((action, action_time, next_state_price))
+            self.memory.append((action, action_time, next_state_price, reward))
             print('action is', action)
             print('action time is', action_time)
             if done:
@@ -481,26 +488,31 @@ class AutoEncoderDDQNAgent:
         print('# Save logs to file')
         d = dt.datetime.fromisoformat(self.env.observer.last_trade_time)
         filename_date = '%s-%s-%sT%s:%s' % (d.year, d.month, d.day, d.hour, d.minute)
-        with open('../result/AutoEncoder/test_action_%s_%s_%s.csv' % (self.env.observer.slice_size, self.env.symbol, filename_date), 'w', newline='') as file:
+        with open('../result/%s/test_action_%s_%s_%s.csv' % (
+        self.model_name, self.env.observer.slice_size, self.env.symbol, filename_date), 'w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['i', 'action', 'action_time', 'action_price'])
+            writer.writerow(['i', 'action', 'action_time', 'action_price', 'reward'])
             for i in range(len(self.memory)):
-                writer.writerow((i, self.memory[i][0], self.memory[i][1], self.memory[i][2]))
-
+                writer.writerow((i, self.memory[i][0], self.memory[i][1], self.memory[i][2], self.memory[i][3]))
+        return filename_date
     # Remaining methods for training, testing, saving/loading weights remain unchanged.
-    def save_weights(self):
-        # self.encoder_decoder.save_weights(os.path.join(self.model_path, 'AutoEncoder/EncoderDec_32_512_1.h5'))
-        # self.q_network.save_weights(os.path.join(self.model_path, 'AutoEncoder/QNetwork_32_512_1.h5'))
-        self.target_q_network.save_weights(os.path.join(self.model_path, 'AutoEncoder/TargetQNetwork_32_512_3.h5'))
-        self.model.save_weights(os.path.join(self.model_path, 'AutoEncoder/New_MY_EDDQN_32_512_3.h5'))
 
-    def load_weights(self, filename):
-        if os.path.exists(filename):
+    def save_weights(self):
+        self.encoder_decoder.save_weights(os.path.join(self.model_path, 'model_weights/%s/EncoderDec_32_512_0.h5'%self.model_name))
+        self.q_network.save_weights(os.path.join(self.model_path, 'model_weights/%s/QNetwork_32_512_0.h5'%self.model_name))
+        self.target_q_network.save_weights(os.path.join(self.model_path, 'model_weights/%s/TargetQNetwork_32_512_0.h5'%self.model_name))
+        # self.model.save_weights(os.path.join(self.model_path, 'model_weights/ED DDQN/VANILLAED_DQN_32_512_0.h5'))
+
+    def load_weights(self):
+        if os.path.exists(os.path.join(self.model_path, 'model_weights/%s/Vanilla_ED_DQN_32_512_4.h5'%self.model_name)):
+        # if os.path.exists(os.path.join(self.model_path, 'model_weights/%s/QNetwork_32_512_0.h5'%self.model_name)):
             print('FOUND')
-            # self.encoder_decoder.load_weights(os.path.join(self.model_path, 'AutoEncoder/EncoderDec_32_512_2.h5'))
-            # self.q_network.load_weights(os.path.join(self.model_path, 'AutoEncoder/QNetwork_32_512_1.h5'))
-            self.target_q_network.load_weights(os.path.join(self.model_path, 'AutoEncoder/TargetQNetwork_32_512_3.h5'))
-            self.model.load_weights(os.path.join(self.model_path, 'AutoEncoder/New_MY_EDDQN_32_512_3.h5'))
+            self.encoder_decoder.load_weights(os.path.join(self.model_path, 'model_weights/%s/EncoderDec_32_512_0.h5'%self.model_name))
+            # self.q_network.load_weights(os.path.join(self.model_path, 'model_weights/%s/QNetwork_32_512_0.h5'%self.model_name))
+            self.q_network.load_weights(os.path.join(self.model_path, 'model_weights/%s/Vanilla_ED_DQN_32_512_4.h5'%self.model_name))
+            # self.target_q_network.load_weights(os.path.join(self.model_path, 'model_weights/%s/TargetQNetwork_32_512_0.h5'%self.model_name))
+            # self.model.load_weights(os.path.join(self.model_path, 'model_weights/%s/New_MY_EDDQN_32_512_4.h5'%self.model_name))
+            # self.target_q_network.load_weights(os.path.join(self.model_path, 'model_weights/Vanilla ED DQN/VANILLAED_DQN_32_512_4.h5'))
             # self.model.load_weights(filename)
         else:
             print('NOT FOUND')

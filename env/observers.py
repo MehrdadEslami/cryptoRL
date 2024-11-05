@@ -59,6 +59,7 @@ class ObserverM(Observer):
         self.state_mean_price = 0
         self.last_trade_time = 0
         self.next_image_i = 0
+        self.allow_fetch = True
         self.symbol = config['symbol']
         self.state = None
         self.step = 0
@@ -91,14 +92,15 @@ class ObserverM(Observer):
         return self.state, self.state_mean_price
 
     def next(self):
-        if len(self.trades) < self.buffer_size ** 2:
+        if len(self.trades) < self.buffer_size ** 2 and self.allow_fetch:
             self.query_trades(self.last_trade_time, "now()")
 
         end = self.next_image_i + self.buffer_size ** 2
         if self.next_image_i >= len(self.trades):
             print('THE observer.image_i > len(self.trades')
             return [-1], self.trades['price'].iloc[-1]
-        if self.next_image_i < len(self.trades) and end > len(self.trades):
+        if self.next_image_i < len(self.trades) < end:
+            end = len(self.trades) - 1
             slice_trades = self.trades.iloc[self.next_image_i:]
         else:
             slice_trades = self.trades.iloc[self.next_image_i:end]
@@ -106,14 +108,7 @@ class ObserverM(Observer):
 
         image = self.trades_to_normal_image(slice_trades.reset_index(drop=True))
 
-
-        # the price should be computed in trades[next_image_i+] time
-        if self.next_image_i + self.buffer_size ** 2 >= len(self.trades):
-            last_trade = self.trades.iloc[-1]
-        else:
-            last_trade = self.trades.iloc[self.next_image_i + self.buffer_size**2]
-
-        trade_time = self.trades.iloc[self.next_image_i]['time']
+        trade_time = self.trades.iloc[end]['time']
         if trade_time.minute < 15:
             start = trade_time - dt.timedelta(minutes=30)
         else:
@@ -125,19 +120,23 @@ class ObserverM(Observer):
         ohlcv = self.query_ohlcv_by_time(start, end)
 
         self.next_image_i = self.next_image_i + self.slice_size
-        if ohlcv is list:
-            return image, self.image_mean_price
-        else:
-            return image, ohlcv['low']
+        return image, ohlcv['low']
+        # if ohlcv is list:
+        #     return image, self.image_mean_price
+        # else:
+        #     return image, ohlcv['low']
 
     def reset(self) -> None:
         print('ITS RESETING OBSERVER ..... ')
-        self.trades = pd.DataFrame()
-        self.last_trade_time = 0
+        if not self.trades.empty:
+            self.allow_fetch = False
+        else:
+            self.last_trade_time = 0
         self.next_image_i = 0
         self.step = 0
 
     def query_trades(self, start, end):
+
         query = f'''
             from(bucket: "{self.influxdb_config['bucket']}")
               |> range(start: {start}, stop: {end})
@@ -148,7 +147,9 @@ class ObserverM(Observer):
               |> keep(columns: ["_time", "price", "quantity", "side"])
             '''
         # print(query)
+        print('Start Fetching Data From Influxdb')
         tables = self.query_api.query(query)
+        print('Fetching Done ')
         self.client.close()
 
         records = []
@@ -158,7 +159,7 @@ class ObserverM(Observer):
 
         self.trades = pd.DataFrame(records, columns=['time', 'price', 'quantity', 'side'])
         self.trades = self.trades.sort_values(by='time')
-        self.trades = self.trades[self.trades['quantity'] > 0.001]
+        # self.trades = self.trades[self.trades['quantity'] > 0.001]
 
         # Normalize price and quantity
         self.max_all_prices = self.trades['price'].max()

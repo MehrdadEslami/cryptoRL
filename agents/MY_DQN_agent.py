@@ -14,11 +14,15 @@ import datetime as dt
 
 class MYDQNAgent:
     def __init__(self, config):
+        self.current_action = None
         self.env = TradingEnv(trading_pair='BTC/USD', config=config)
         self.observation_shape = self.env.observation_space.shape
+        self.env.action_scheme.actions = [-1, -0.5, 0, 0.5, 1]
+        self.env.action_scheme.action_n = 5
         self.buffer_size = int(config['buffer_size']) #THE IMAGE SIZE IS buffer_size*buffer_size
         self.batch_size = int(config['batch_size'])   # THE MINIBATH FOR TRAIN ON BATCH
         self.model_path = config['model_weights_path']
+        self.model_name = config['model_name']
         self.memory = []
         self.gamma = 0.7
         self.beta = 0.3
@@ -35,7 +39,7 @@ class MYDQNAgent:
         self.state_reward = []
         self.state_action = []
         self.action_time = []
-        self.loss = []
+        self.loss_list = []
         # Q-network
         self.model = self._build_q_network()
 
@@ -139,11 +143,13 @@ class MYDQNAgent:
             if done:
                 target_q_values.append(reward)
             if not done:
-                max_reward_next_state = self.calculate_max_reward(next_state_i)  # Assuming next_states[i] represents trade rewards
+                # max_reward_next_state = self.calculate_max_reward(next_state_i)  # Assuming next_states[i] represents trade rewards
 
                 next_q_values = self.target_model.predict(np.expand_dims(next_state, axis=0))[0]
+                # target_q_values.append(
+                #     reward + self.gamma * (self.beta * max_reward_next_state + (1 - self.beta) * np.max(next_q_values)))
                 target_q_values.append(
-                    reward + self.gamma * (self.beta * max_reward_next_state + (1 - self.beta) * np.max(next_q_values)))
+                    reward + self.gamma * np.max(next_q_values))
 
                 # print(
                 # 'r + gamma * (beta * max_reward + (1 - beta) * target_q_value) = %f + %f * (%f * %f + %f * %f) = %f' %
@@ -161,6 +167,8 @@ class MYDQNAgent:
 
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+        print('target_q_values', target_q_values)
+        print('target_q_values mean', np.mean(target_q_values))
         return loss
 
     def train(self, num_episodes=1):
@@ -177,7 +185,7 @@ class MYDQNAgent:
             self.state_reward = []
             self.state_action = []
             self.action_time = []
-            self.loss = []
+            self.loss_list = []
             self.memory = []
             done = False
 
@@ -197,7 +205,7 @@ class MYDQNAgent:
                 self.state_action.append(action)
                 self.state_reward.append(reward)
                 self.action_time.append(next_state[0, 0, 3])
-                self.loss.append(loss)
+                self.loss_list.append(loss)
                 episode_reward += reward
                 if self.env.step_count % 30 == 0:
                     self.update_target_network()
@@ -209,24 +217,27 @@ class MYDQNAgent:
             profits_log.append(episode_profit/self.env.step_count)
             print(f"Episode: {episode + 1}, Reward: {episode_reward}, Profit: {episode_profit}")
 
-            with open('result/temp_state.csv', 'a', newline='') as file:
+            with open('result/%s/temp_state.csv'%self.model_name, 'a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(['episode', 'action', 'Reward', 'loss', 'action_time'])
                 for i in range(len(self.state_action)):
                     # writer.writerow([self.state_action[i], self.state_reward[i], self.action_time[i]])
                     writer.writerow([episode, self.state_action[i],
-                                    self.state_reward[i], self.loss[i], self.action_time[i]])
-        # Save the model weights at the end of training
-        print('Save the model weights at the end of training')
+                                    self.state_reward[i], self.loss_list[i], self.action_time[i]])
+            # Save the model weights at the end of training
+            print('Save the model weights at the end of training')
 
 
-        # Save logs to file
-        print('# Save logs to file')
-        with open('result/temp_episode.csv', 'w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(['Episode', 'Reward', 'Profit'])
-            for i in range(num_episodes):
-                writer.writerow([i + 1, rewards_log[i], profits_log[i]])
+            # Save logs to file
+            print('# Save logs to file')
+            file_exit = False
+            if os.path.exists('result/%s/temp_episode.csv'%self.model_name):
+                file_exit = True
+            with open('result/%s/temp_episode.csv'%self.model_name, 'a', newline='') as file:
+                writer = csv.writer(file)
+                if not file_exit:
+                    writer.writerow(['Episode', 'Reward', 'Q_Loss', 'Target_loss'])
+                writer.writerow([episode, np.mean(rewards_log), np.mean(self.loss_list[self.batch_size-1:]), np.mean(self.loss_list[self.batch_size-1:])])
 
     def test(self):
         self.usdt_balance = 1000
@@ -243,6 +254,9 @@ class MYDQNAgent:
             print('in act function with state shape', state.shape)
             q_values = self.model.predict(state)
             action = np.argmax(q_values[0])
+            if self.current_action == action:
+                action = 2
+            self.current_action = action
 
             print('action is', action)
             if self.env.observer.next_image_i < len(self.env.observer.trades):
@@ -251,7 +265,7 @@ class MYDQNAgent:
             next_state, next_state_price, reward, done, self.usdt_balance, self.btc_balance, _ = self.env.step(
                 action, self.usdt_balance,
                 self.btc_balance)
-            self.memory.append((action, action_time, next_state_price))
+            self.memory.append((action, action_time, next_state_price, reward))
             print('action is', action)
             print('action time is', action_time)
             if done:
@@ -267,18 +281,22 @@ class MYDQNAgent:
         print('# Save logs to file')
         d = dt.datetime.fromisoformat(self.env.observer.last_trade_time)
         filename_date = '%s:%s:%s-%s:%s' % (d.year, d.month, d.day, d.hour, d.minute)
-        with open('result/article/test_action_%s_%s_%s.csv' % (self.env.observer.slice_size, self.env.symbol,filename_date), 'w', newline='') as file:
+        with open(os.path.join(self.model_path, 'result/%s/test_action_%s_%s_%s.csv' % (self.model_name, self.env.observer.slice_size, self.env.symbol, filename_date)), 'w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['i', 'action', 'action_time', 'action_price'])
+            writer.writerow(['i', 'action', 'action_time', 'action_price', 'reward'])
             for i in range(len(self.memory)):
-                writer.writerow((i, self.memory[i][0], self.memory[i][1], self.memory[i][2]))
+                writer.writerow((i, self.memory[i][0], self.memory[i][1], self.memory[i][2], self.memory[i][3]))
+        return filename_date
 
     def save_weights(self):
-        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_6.h5'))
+        self.model.save_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_0.h5'))
 
     def load_weights(self):
-        if os.path.exists(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5')):
-            self.model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5'))
-            self.target_model.load_weights(os.path.join(self.model_path, 'MY_dqn_4channel_16_5.h5'))
+        if os.path.exists(os.path.join(self.model_path, 'model_weights/MYDQN/MY_dqn_4channel_16_0.h5')):
+            print('FOUND weights')
+            self.model.load_weights(os.path.join(self.model_path, 'model_weights/MYDQN/MY_dqn_4channel_16_0.h5'))
+            self.target_model.load_weights(os.path.join(self.model_path, 'model_weights/MYDQN/MY_dqn_4channel_16_0.h5'))
             print("Loaded model weights.")
+        else:
+            print('NOT FOUND ')
 

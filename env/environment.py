@@ -30,19 +30,19 @@ class TradingEnv(gym.Env):
 
         self.step_count = 0
         self.current_state = None
-        self.current_state_price = 0
+        self.next_state_price = 0
         print('ENVIRONMENT object Ceated')
 
     def step(self, action_index, usdt_balance, btc_balance):
         print('NOW IN ENVIRONMENT STEP: ', self.step_count)
         action = self.action_scheme.actions[action_index]
-        usdt_balance, btc_balance = self.action_scheme.perform(action, usdt_balance, btc_balance, self.current_state_price)
-        current_price = self.current_state_price
+        usdt_balance, btc_balance = self.action_scheme.perform(action, usdt_balance, btc_balance, self.next_state_price)
+        current_price = self.next_state_price
         next_state_i = self.observer.next_image_i
-        next_state, self.current_state_price = self.observer.observe()
+        next_state, self.next_state_price = self.observer.observe()
         # self.observer.next_image_i -= self.observer.slice_size
 
-        new_state_price = self.current_state_price
+        new_state_price = self.next_state_price
         # reward = self.reward_scheme.reward(action, current_price, new_state_price)
         reward = self.reward_scheme.reward(usdt_balance, btc_balance, action, current_price, new_state_price)
         self.current_state = next_state
@@ -60,7 +60,7 @@ class TradingEnv(gym.Env):
                 print("Reached maximum number of steps.")
             if len(self.current_state) == -1:
                 print('THE current state is -1')
-        return [next_state, self.current_state_price,  reward, done, usdt_balance, btc_balance, next_state_i]
+        return [next_state, self.next_state_price, reward, done, usdt_balance, btc_balance, next_state_i]
 
     def calculate_max_q(self, next_state):
         next_next_state, next_next_mean_price = self.observer.observe()
@@ -78,8 +78,8 @@ class TradingEnv(gym.Env):
         print('NOW ENVIRONMENT IS RESESING >>>> ')
         self.step_count = 0
         self.observer.reset()
-        self.current_state, self.current_state_price = self.observer.observe()
-        return self.current_state, self.current_state_price
+        self.current_state, self.next_state_price = self.observer.observe()
+        return self.current_state, self.next_state_price
 
     def render(self, mode='human'):
         pass

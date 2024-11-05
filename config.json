@@ -26,11 +26,12 @@
     }
   },
   "symbol":"BTCUSDT",
+  "model_name": "Vanilla ED DQN",
   "buffer_size": "32",
-  "slice_size": "128",
+  "slice_size": "1024",
   "encoded_size" : "512",
-  "batch_size" : "16",
+  "batch_size" : "32",
   "ESRI" : "16",
   "max_steps": "10000",
-  "model_weights_path": "model_weights"
+  "model_weights_path": "/home/mehrdad/workspace/CryptoAnalysis/"
 }
